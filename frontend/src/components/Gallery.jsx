@@ -92,22 +92,41 @@ export default function Gallery() {
                   WebkitOverflowScrolling: "touch"
                 }}>
                   {groupedPhotos[uploader].map((photo, index) => (
-                    <img
-                      key={photo.id}
-                      src={photo.thumbnailUrl || photo.fileUrl}
-                      alt={`Foto de ${uploader}`}
-                      onClick={() => openLightbox(groupedPhotos[uploader], index)}
-                      style={{
-                        height: "140px",
-                        width: "140px",
-                        objectFit: "cover",
-                        borderRadius: "8px",
-                        scrollSnapAlign: "start",
-                        cursor: "pointer",
-                        boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-                        flexShrink: 0
-                      }}
-                    />
+                    photo.mimeType?.startsWith("video") ? (
+                      <video
+                        key={photo.id}
+                        src={photo.fileUrl}
+                        onClick={() => openLightbox(groupedPhotos[uploader], index)}
+                        style={{
+                          height: "140px",
+                          width: "140px",
+                          objectFit: "cover",
+                          borderRadius: "8px",
+                          scrollSnapAlign: "start",
+                          cursor: "pointer",
+                          boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+                          flexShrink: 0
+                        }}
+                        muted
+                      />
+                    ) : (
+                      <img
+                        key={photo.id}
+                        src={photo.thumbnailUrl || photo.fileUrl}
+                        alt={`Foto de ${uploader}`}
+                        onClick={() => openLightbox(groupedPhotos[uploader], index)}
+                        style={{
+                          height: "140px",
+                          width: "140px",
+                          objectFit: "cover",
+                          borderRadius: "8px",
+                          scrollSnapAlign: "start",
+                          cursor: "pointer",
+                          boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+                          flexShrink: 0
+                        }}
+                      />
+                    )
                   ))}
                 </div>
               </div>
@@ -163,19 +182,35 @@ export default function Gallery() {
             </button>
           )}
 
-          {/* Imagem Expandida */}
-          <img 
-            src={lightboxPhotos[lightboxIndex].fileUrl} 
-            alt="Expandida" 
-            style={{
-              maxHeight: "85vh",
-              maxWidth: "90vw",
-              objectFit: "contain",
-              borderRadius: "4px",
-              boxShadow: "0 0 20px rgba(0,0,0,0.5)"
-            }}
-            onClick={(e) => e.stopPropagation()} 
-          />
+          {/* Imagem ou Video Expandido */}
+          {lightboxPhotos[lightboxIndex].mimeType?.startsWith("video") ? (
+            <video 
+              src={lightboxPhotos[lightboxIndex].fileUrl} 
+              controls
+              autoPlay
+              style={{
+                maxHeight: "85vh",
+                maxWidth: "90vw",
+                objectFit: "contain",
+                borderRadius: "4px",
+                boxShadow: "0 0 20px rgba(0,0,0,0.5)"
+              }}
+              onClick={(e) => e.stopPropagation()} 
+            />
+          ) : (
+            <img 
+              src={lightboxPhotos[lightboxIndex].fileUrl} 
+              alt="Expandida" 
+              style={{
+                maxHeight: "85vh",
+                maxWidth: "90vw",
+                objectFit: "contain",
+                borderRadius: "4px",
+                boxShadow: "0 0 20px rgba(0,0,0,0.5)"
+              }}
+              onClick={(e) => e.stopPropagation()} 
+            />
+          )}
 
           {/* Indicador NumÃ©rico (1 de X) */}
           {lightboxPhotos.length > 1 && (
