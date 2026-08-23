@@ -1,0 +1,27 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    environment:
+      - PORT=3001
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - SHEET_ID=${SHEET_ID:-}
+      - SHEET_TAB=${SHEET_TAB:-Confirmacoes}
+      - DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID:-}
+      - GOOGLE_SERVICE_ACCOUNT_KEY_PATH=${GOOGLE_SERVICE_ACCOUNT_KEY_PATH:-./service-account.json}
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_BACKEND_URL=http://backend:3001
+    depends_on:
+      - backend

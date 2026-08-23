@@ -1,0 +1,28 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    volumes:
+      - ./backend/data:/app/data
+      # Se você for usar autenticação com o Google Sheets em produção,
+      # precisará subir o arquivo service-account.json para a pasta raiz e descomentar a linha abaixo:
+      # - ./service-account.json:/app/service-account.json:ro
+    environment:
+      - PORT=3001
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - SHEET_ID=${SHEET_ID:-}
+      - SHEET_TAB=${SHEET_TAB:-Confirmacoes}
+      - DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID:-}
+      - GOOGLE_SERVICE_ACCOUNT_KEY_PATH=${GOOGLE_SERVICE_ACCOUNT_KEY_PATH:-./service-account.json}
+    restart: always
