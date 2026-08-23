@@ -146,152 +146,117 @@ export default function App() {
             </button>
           </div>
 
-          {/* Galeria de Fotos (SÃ³ renderiza se houver fotos ou se o componente tratar) */}
+          {/* Galeria de Fotos */}
           <Gallery />
 
-        {/* Modal Overlay com Blur de Fundo e Botão Voltar */}
-        {activeTab && (
-          <div className="modal-overlay">
-            <div className="modal-content-wrapper">
-              <button
-                className="btn-back"
-                onClick={() => setActiveTab(null)}
-              >
-                ← Voltar para o Convite
-              </button>
-
-              <div className="modal-card-body">
-                {activeTab === "rsvp" && <RsvpForm onSuccess={handleSuccessClose} />}
-                {activeTab === "mapas" && <LocationMaps />}
-                {activeTab === "fotos" && <PhotoUpload onBackgroundUpload={handleBackgroundUpload} />}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Notificação Flutuante de Upload em Segundo Plano */}
-        {backgroundUpload.active && (
-          <div style={{ position: "fixed", bottom: "24px", left: "24px", right: "24px", background: "white", padding: "16px", borderRadius: "16px", boxShadow: "0 8px 32px rgba(0,0,0,0.15)", zIndex: 9999, border: "1px solid var(--gold)", transition: "all 0.3s ease" }}>
-            <p style={{ margin: "0 0 10px", fontSize: "0.95rem", color: "var(--ink)", fontWeight: "600", fontFamily: "var(--font-display)" }}>{backgroundUpload.text}</p>
-            <div style={{ background: "rgba(0,0,0,0.05)", borderRadius: "8px", height: "8px", overflow: "hidden" }}>
-              <div style={{ width: `${backgroundUpload.progress}%`, height: "100%", background: "var(--gold)", transition: "width 0.3s ease" }}></div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal do Tour Interativo */}
-        {showTour && (
-          <div className="tour-overlay">
-            <div className="tour-card">
-              <button className="tour-close-btn" onClick={handleFinishTour} aria-label="Fechar tour">
-                ×
-              </button>
-
-              <div className="tour-step-indicator">Passo {tourStep} de 4</div>
-
-              {tourStep === 1 && (
-                <>
-                  <h4 className="tour-title">Seja bem-vindo!</h4>
-                  <p className="tour-text">
-                    Preparamos este espaço com muito amor para o batizado da Analu. 
-                    Vamos fazer um tour rápido de 15 segundos para te mostrar como interagir com o convite?
-                  </p>
-                  <div className="tour-actions">
-                    <button className="btn-tour-skip" onClick={handleFinishTour}>
-                      Pular Tour
-                    </button>
-                    <button className="btn-tour-next" onClick={() => setTourStep(2)}>
-                      Começar!
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {tourStep === 2 && (
-                <>
-                  <h4 className="tour-title">Confirmar Presença</h4>
-                  <p className="tour-text">
-                    No primeiro cartão, você confirma sua presença e de seus acompanhantes, nos informando em quais momentos do evento irá nos prestigiar.
-                  </p>
-                  <div className="tour-actions">
-                    <button className="btn-tour-skip" onClick={() => setTourStep(1)}>
-                      Voltar
-                    </button>
-                    <button className="btn-tour-next" onClick={() => setTourStep(3)}>
-                      Avançar
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {tourStep === 3 && (
-                <>
-                  <h4 className="tour-title">Localização</h4>
-                  <p className="tour-text">
-                    No segundo cartão, você pode consultar o endereço exato, visualizar o mapa do local e abrir rotas direto no seu GPS (Waze ou Maps).
-                  </p>
-                  <div className="tour-actions">
-                    <button className="btn-tour-skip" onClick={() => setTourStep(2)}>
-                      Voltar
-                    </button>
-                    <button className="btn-tour-next" onClick={() => setTourStep(4)}>
-                      Avançar
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {tourStep === 4 && (
-                <>
-                  <h4 className="tour-title">Enviar Fotos</h4>
-                  <p className="tour-text">
-                    No terceiro cartão, você pode enviar e compartilhar as fotos tiradas no batizado para criarmos juntos um lindo álbum de recordações!
-                  </p>
-                  <div className="tour-actions">
-                    <button className="btn-tour-skip" onClick={() => setTourStep(3)}>
-                      Voltar
-                    </button>
-                    <button className="btn-tour-next" onClick={handleFinishTour}>
-                      Concluir
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        <p className="footer-note">Será uma alegria compartilhar esse momento especial com você.</p>
+          <p className="footer-note">Será uma alegria compartilhar esse momento especial com você.</p>
+          
+          <p className="invitation-footer-verse">
+            "Deixai vir a mim os pequeninos, pois deles é o Reino dos Céus." <br />
+            — Mateus 19:14
+          </p>
+        </div> {/* fim da .invitation-card */}
         
-        {/* Versículo de Mateus no Rodapé */}
-        <p className="invitation-footer-verse">
-          "Deixai vir a mim os pequeninos, pois deles é o Reino dos Céus." <br />
-          — Mateus 19:14
-        </p>
-      </div> {/* fim da .invitation-card */}
-      
-      <div style={{ textAlign: "center", marginTop: "32px", marginBottom: "20px" }}>
-        <a
-          href="/admin"
-          style={{
-            padding: "6px 16px",
-            fontSize: "0.75rem",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-            textDecoration: "none",
-            borderRadius: "20px",
-            display: "inline-block",
-            border: "1px solid var(--sage)",
-            color: "var(--sage-deep)",
-            background: "rgba(95, 110, 82, 0.05)",
-            fontFamily: "var(--font-body)",
-            transition: "all 0.2s ease"
-          }}
-        >
-          Painel Admin
-        </a>
+        <div style={{ textAlign: "center", marginTop: "32px", marginBottom: "20px" }}>
+          <a
+            href="/admin"
+            style={{
+              padding: "6px 16px",
+              fontSize: "0.75rem",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              textDecoration: "none",
+              borderRadius: "20px",
+              display: "inline-block",
+              border: "1px solid var(--sage)",
+              color: "var(--sage-deep)",
+              background: "rgba(95, 110, 82, 0.05)",
+              fontFamily: "var(--font-body)",
+              transition: "all 0.2s ease"
+            }}
+          >
+            Painel Admin
+          </a>
+        </div>
       </div>
-    </div>
+
+      {/* MODAIS fora do .page — o backdrop-filter do invitation-card cria
+          um stacking context que prende o position:fixed dentro do pai.
+          Movendo para fora, eles cobrem a tela toda corretamente. */}
+
+      {activeTab && (
+        <div className="modal-overlay">
+          <div className="modal-content-wrapper">
+            <button className="btn-back" onClick={() => setActiveTab(null)}>
+              ← Voltar para o Convite
+            </button>
+            <div className="modal-card-body">
+              {activeTab === "rsvp" && <RsvpForm onSuccess={handleSuccessClose} />}
+              {activeTab === "mapas" && <LocationMaps />}
+              {activeTab === "fotos" && <PhotoUpload onBackgroundUpload={handleBackgroundUpload} />}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {backgroundUpload.active && (
+        <div style={{ position: "fixed", bottom: "24px", left: "24px", right: "24px", background: "white", padding: "16px", borderRadius: "16px", boxShadow: "0 8px 32px rgba(0,0,0,0.15)", zIndex: 9999, border: "1px solid var(--gold)", transition: "all 0.3s ease" }}>
+          <p style={{ margin: "0 0 10px", fontSize: "0.95rem", color: "var(--ink)", fontWeight: "600", fontFamily: "var(--font-display)" }}>{backgroundUpload.text}</p>
+          <div style={{ background: "rgba(0,0,0,0.05)", borderRadius: "8px", height: "8px", overflow: "hidden" }}>
+            <div style={{ width: `${backgroundUpload.progress}%`, height: "100%", background: "var(--gold)", transition: "width 0.3s ease" }}></div>
+          </div>
+        </div>
+      )}
+
+      {showTour && (
+        <div className="tour-overlay">
+          <div className="tour-card">
+            <button className="tour-close-btn" onClick={handleFinishTour} aria-label="Fechar tour">×</button>
+            <div className="tour-step-indicator">Passo {tourStep} de 4</div>
+            {tourStep === 1 && (
+              <>
+                <h4 className="tour-title">Seja bem-vindo!</h4>
+                <p className="tour-text">Preparamos este espaço com muito amor para o batizado da Analu. Vamos fazer um tour rápido de 15 segundos para te mostrar como interagir com o convite?</p>
+                <div className="tour-actions">
+                  <button className="btn-tour-skip" onClick={handleFinishTour}>Pular Tour</button>
+                  <button className="btn-tour-next" onClick={() => setTourStep(2)}>Começar!</button>
+                </div>
+              </>
+            )}
+            {tourStep === 2 && (
+              <>
+                <h4 className="tour-title">Confirmar Presença</h4>
+                <p className="tour-text">No primeiro cartão, você confirma sua presença e de seus acompanhantes, nos informando em quais momentos do evento irá nos prestigiar.</p>
+                <div className="tour-actions">
+                  <button className="btn-tour-skip" onClick={() => setTourStep(1)}>Voltar</button>
+                  <button className="btn-tour-next" onClick={() => setTourStep(3)}>Avançar</button>
+                </div>
+              </>
+            )}
+            {tourStep === 3 && (
+              <>
+                <h4 className="tour-title">Localização</h4>
+                <p className="tour-text">No segundo cartão, você pode consultar o endereço exato, visualizar o mapa do local e abrir rotas direto no seu GPS (Waze ou Maps).</p>
+                <div className="tour-actions">
+                  <button className="btn-tour-skip" onClick={() => setTourStep(2)}>Voltar</button>
+                  <button className="btn-tour-next" onClick={() => setTourStep(4)}>Avançar</button>
+                </div>
+              </>
+            )}
+            {tourStep === 4 && (
+              <>
+                <h4 className="tour-title">Enviar Fotos</h4>
+                <p className="tour-text">No terceiro cartão, você pode enviar e compartilhar as fotos tiradas no batizado para criarmos juntos um lindo álbum de recordações!</p>
+                <div className="tour-actions">
+                  <button className="btn-tour-skip" onClick={() => setTourStep(3)}>Voltar</button>
+                  <button className="btn-tour-next" onClick={handleFinishTour}>Concluir</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
+

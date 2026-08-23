@@ -492,8 +492,10 @@ textarea {
 }
 
 .module-card {
-  background: white;
-  border: 1px solid var(--line);
+  background: rgba(255, 252, 246, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(206, 178, 114, 0.35);
   border-radius: 18px;
   aspect-ratio: 1 / 1;
   display: flex;
