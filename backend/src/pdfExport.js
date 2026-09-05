@@ -149,11 +149,10 @@ export function buildGuestListPdf(confirmacoes, filtro, tituloCustomizado) {
 
     let cols = [];
     if (isRestaurante) {
-      // Para o Restaurante: apenas Nome das pessoas e Quantidade (sem Acomp. e sem Mensagem)
+      // Para o Restaurante: apenas Nº e Nome do Convidado
       cols = [
-        { key: "num", label: "Nº", width: 40, align: "center" },
-        { key: "nome", label: "Nome do Convidado", width: 395, align: "left" },
-        { key: "qtd", label: "Quantidade", width: 80, align: "center" },
+        { key: "num", label: "Nº", width: 50, align: "center" },
+        { key: "nome", label: "Nome do Convidado", width: 465, align: "left" },
       ];
     } else {
       // Para a Lista Geral em PDF: Nome, Acompanhantes, Presença e Mensagem bem diagramada
@@ -271,7 +270,6 @@ export function buildGuestListPdf(confirmacoes, filtro, tituloCustomizado) {
         pessoasDoGrupo.forEach((p) => {
           const numStr = String(sequentialNumber++);
           const nomeStr = p.isTitular ? p.nome : `   ${p.nome}`;
-          const qtdStr = "1";
 
           const rowHeight = 19;
           const maxPageY = doc.page.height - bottomMargin;
@@ -309,15 +307,6 @@ export function buildGuestListPdf(confirmacoes, filtro, tituloCustomizado) {
               width: cols[1].width - 8,
               align: cols[1].align,
             });
-          currX += cols[1].width;
-
-          // Coluna 3: Quantidade
-          doc
-            .fillColor(INK)
-            .text(qtdStr, currX + 4, currentY + 2, {
-              width: cols[2].width - 8,
-              align: cols[2].align,
-            });
 
           currentY += rowHeight;
           rowIndex++;
@@ -348,17 +337,17 @@ export function buildGuestListPdf(confirmacoes, filtro, tituloCustomizado) {
       doc
         .fontSize(10)
         .fillColor(GOLD)
-        .text("TOTAL GERAL DE PESSOAS:", startX + cols[0].width + 4, currentY + 5, {
-          width: cols[1].width - 8,
+        .text("TOTAL DE CONFIRMADOS:", startX + 10, currentY + 5, {
+          width: 320,
           align: "right",
         });
 
       doc
         .fontSize(10)
         .fillColor(INK)
-        .text(`${totalAlmoco} pessoas`, startX + cols[0].width + cols[1].width + 4, currentY + 5, {
-          width: cols[2].width - 8,
-          align: "center",
+        .text(`${totalAlmoco} pessoas`, startX + 340, currentY + 5, {
+          width: 160,
+          align: "left",
         });
     } else {
       // ==========================================
