@@ -133,23 +133,66 @@ app.post("/api/upload-chunk", upload.single("chunk"), handleChunkUpload);
 app.post("/api/upload-complete", handleChunkComplete);
 
 // --- Galeria de Fotos ---
-// Rota pública para listar todas as fotos enviadas
-app.get("/api/gallery", (_req, res) => {
+// Rota publica para listar todas as fotos enviadas
+app.get("/api/gallery", (req, res) => {
   try {
     const galleryDbPath = path.resolve("./data/gallery.json");
     if (fs.existsSync(galleryDbPath)) {
       const photos = JSON.parse(fs.readFileSync(galleryDbPath, "utf8"));
-      // Opcional: ordenar da mais recente para mais antiga
       photos.sort((a, b) => b.timestamp - a.timestamp);
-      res.json(photos);
+      
+      const isAdmin = req.query.admin === "true" && req.header("X-Admin-Password") === process.env.ADMIN_PASSWORD;
+      const publicPhotos = isAdmin ? photos : photos.filter(p => !p.hidden);
+      res.json(publicPhotos);
     } else {
       res.json([]);
     }
   } catch (err) {
     console.error("Erro ao ler galeria:", err);
-    res.status(500).json({ error: "Não foi possível carregar a galeria." });
+    res.status(500).json({ error: "Nao foi possivel carregar a galeria." });
   }
 });
+
+// Curtir uma foto
+app.post("/api/gallery/:id/like", (req, res) => {
+  try {
+    const galleryDbPath = path.resolve("./data/gallery.json");
+    if (fs.existsSync(galleryDbPath)) {
+      let photos = JSON.parse(fs.readFileSync(galleryDbPath, "utf8"));
+      const index = photos.findIndex(p => p.id === req.params.id);
+      if (index !== -1) {
+        photos[index].likes = (photos[index].likes || 0) + 1;
+        fs.writeFileSync(galleryDbPath, JSON.stringify(photos, null, 2));
+        return res.json({ ok: true, likes: photos[index].likes });
+      }
+    }
+    res.status(404).json({ error: "Foto nao encontrada." });
+  } catch (err) {
+    res.status(500).json({ error: "Falha ao curtir." });
+  }
+});
+
+// Ocultar/Mostrar uma foto
+app.patch("/api/gallery/:id/visibility", express.json(), requireAdmin, (req, res) => {
+  try {
+    const { hidden } = req.body;
+    const galleryDbPath = path.resolve("./data/gallery.json");
+    if (fs.existsSync(galleryDbPath)) {
+      let photos = JSON.parse(fs.readFileSync(galleryDbPath, "utf8"));
+      const index = photos.findIndex(p => p.id === req.params.id);
+      if (index !== -1) {
+        photos[index].hidden = hidden;
+        fs.writeFileSync(galleryDbPath, JSON.stringify(photos, null, 2));
+        return res.json({ ok: true, hidden });
+      }
+    }
+    res.status(404).json({ error: "Foto nao encontrada." });
+  } catch (err) {
+    res.status(500).json({ error: "Falha ao alterar visibilidade." });
+  }
+});
+
+// --- Contas Google Drive (Admin) ---
 
 // --- Contas Google Drive (Admin) ---
 app.get("/api/admin/drive-accounts", requireAdmin, (_req, res) => {

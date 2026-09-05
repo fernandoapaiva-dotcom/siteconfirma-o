@@ -359,7 +359,7 @@ function GalleryManager({ senha }) {
 
   async function loadPhotos() {
     try {
-      const res = await fetch("/api/gallery");
+      const res = await fetch("/api/gallery?admin=true", { headers: { "X-Admin-Password": senha } });
       if (res.ok) {
         setPhotos(await res.json());
       }
@@ -371,6 +371,21 @@ function GalleryManager({ senha }) {
   useEffect(() => {
     loadPhotos();
   }, []);
+
+  async function toggleVisibility(id, currentHidden) {
+    try {
+      const res = await fetch(`/api/gallery/${id}/visibility`, {
+        method: "PATCH",
+        headers: { "X-Admin-Password": senha, "Content-Type": "application/json" },
+        body: JSON.stringify({ hidden: !currentHidden })
+      });
+      if (res.ok) {
+        loadPhotos();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
 
   async function deletePhoto(id) {
     if (!window.confirm("Excluir esta foto da galeria do site? (Ela continuará salva no Google Drive)")) return;
@@ -394,7 +409,7 @@ function GalleryManager({ senha }) {
       
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: "12px", marginTop: "20px" }}>
         {photos.map(p => (
-          <div key={p.id} style={{ position: "relative", border: "1px solid var(--line)", borderRadius: "8px", padding: "8px", textAlign: "center" }}>
+          <div key={p.id} style={{ position: "relative", border: "1px solid var(--line)", borderRadius: "8px", padding: "8px", textAlign: "center", opacity: p.hidden ? 0.5 : 1 }}>
             {p.mimeType?.startsWith("video") ? (
               <video src={p.fileUrl} style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px" }} muted />
             ) : (
@@ -411,3 +426,7 @@ function GalleryManager({ senha }) {
     </section>
   );
 }
+
+
+
+
