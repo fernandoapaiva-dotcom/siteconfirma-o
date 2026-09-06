@@ -21,7 +21,7 @@ export default function App() {
 
   async function handleBackgroundUpload(arquivos, nome) {
     setActiveTab(null); // Fecha a modal imediatamente
-    setBackgroundUpload({ active: true, progress: 0, text: `Enviando ${arquivos.length} foto/vídeo(s) em partes...` });
+    setBackgroundUpload({ active: true, progress: 0, phase: "sending", text: `Iniciando envio de ${arquivos.length} arquivo(s)...` });
     
     try {
       const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
@@ -53,7 +53,7 @@ export default function App() {
 
           uploadedBytes += chunkBlob.size;
           const percent = Math.round((uploadedBytes / totalBytes) * 100);
-          setBackgroundUpload(prev => ({ ...prev, progress: percent }));
+          setBackgroundUpload(prev => ({ ...prev, progress: percent, text: `Enviando em segundo plano... voce pode usar outros apps!`, phase: "sending" }));
         }
 
         // Finaliza o arquivo
@@ -71,12 +71,12 @@ export default function App() {
         if (!completeRes.ok) throw new Error("Falha ao montar o arquivo no servidor");
       }
 
-      setBackgroundUpload({ active: true, progress: 100, text: "Tudo enviado com sucesso! Obrigado!" });
-      setTimeout(() => setBackgroundUpload({ active: false, progress: 0, text: "" }), 4000);
+      setBackgroundUpload({ active: true, progress: 100, phase: "done", text: "Tudo enviado com sucesso! Obrigado!" });
+      setTimeout(() => setBackgroundUpload({ active: false, progress: 0, phase: "", text: "" }), 5000);
     } catch (err) {
       console.error(err);
-      setBackgroundUpload({ active: true, progress: 0, text: "Erro ao enviar. Verifique a internet e tente de novo." });
-      setTimeout(() => setBackgroundUpload({ active: false, progress: 0, text: "" }), 5000);
+      setBackgroundUpload({ active: true, progress: 0, phase: "error", text: "Erro ao enviar. Verifique a internet e tente de novo." });
+      setTimeout(() => setBackgroundUpload({ active: false, progress: 0, phase: "", text: "" }), 5000);
     }
   }
 
@@ -98,12 +98,12 @@ export default function App() {
         <div className="invitation-card">
           <Hero />
 
-          {/* Menu de Módulos: Proporcional e com breves descrições */}
+          {/* Menu de MÃ³dulos: Proporcional e com breves descriÃ§Ãµes */}
           <div className="modules-grid">
             <button
               className={`module-card ${showTour && tourStep === 2 ? "tour-highlight" : ""}`}
               onClick={() => setActiveTab("rsvp")}
-              title="Confirmar Presença (RSVP)"
+              title="Confirmar PresenÃ§a (RSVP)"
             >
               <svg className="module-icon-large" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="5" y="6" width="14" height="14" rx="2" />
@@ -112,14 +112,14 @@ export default function App() {
                 <line x1="5" y1="11" x2="19" y2="11" />
                 <path d="M12 14c-1-1.2-2.2-.5-2.2.5 0 1 2.2 2.5 2.2 2.5s2.2-1.5 2.2-2.5c0-1-1.2-1.7-2.2-.5z" fill="var(--gold)" stroke="var(--gold)" strokeWidth="0.5" />
               </svg>
-              <h3 className="module-title">Presença</h3>
-              <p className="module-desc">Confirme sua vinda até 30/08</p>
+              <h3 className="module-title">PresenÃ§a</h3>
+              <p className="module-desc">Confirme sua vinda atÃ© 30/08</p>
             </button>
 
             <button
               className={`module-card ${showTour && tourStep === 3 ? "tour-highlight" : ""}`}
               onClick={() => setActiveTab("mapas")}
-              title="Localização e Como Chegar"
+              title="LocalizaÃ§Ã£o e Como Chegar"
             >
               <svg className="module-icon-large" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2l7 6v14H5V8l7-6z" />
@@ -127,14 +127,14 @@ export default function App() {
                 <circle cx="12" cy="11" r="1.5" />
                 <path d="M12 2V0M11 1h2" stroke="var(--gold)" strokeWidth="1.5" />
               </svg>
-              <h3 className="module-title">Localização</h3>
+              <h3 className="module-title">LocalizaÃ§Ã£o</h3>
               <p className="module-desc">Como chegar ao batizado</p>
             </button>
 
             <button
               className={`module-card ${showTour && tourStep === 4 ? "tour-highlight" : ""}`}
               onClick={() => setActiveTab("fotos")}
-              title="Enviar Fotos e Vídeos"
+              title="Enviar Fotos e VÃ­deos"
             >
               <svg className="module-icon-large" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
@@ -142,18 +142,18 @@ export default function App() {
                 <circle cx="12" cy="13" r="1.5" fill="var(--gold)" stroke="var(--gold)" />
               </svg>
               <h3 className="module-title">Enviar Fotos</h3>
-              <p className="module-desc">Compartilhe suas recordações</p>
+              <p className="module-desc">Compartilhe suas recordaÃ§Ãµes</p>
             </button>
           </div>
 
           {/* Galeria de Fotos */}
           <Gallery />
 
-          <p className="footer-note">Será uma alegria compartilhar esse momento especial com você.</p>
+          <p className="footer-note">SerÃ¡ uma alegria compartilhar esse momento especial com vocÃª.</p>
           
           <p className="invitation-footer-verse">
-            "Deixai vir a mim os pequeninos, pois deles é o Reino dos Céus." <br />
-            — Mateus 19:14
+            "Deixai vir a mim os pequeninos, pois deles Ã© o Reino dos CÃ©us." <br />
+            â€” Mateus 19:14
           </p>
         </div> {/* fim da .invitation-card */}
         
@@ -180,7 +180,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* MODAIS fora do .page — o backdrop-filter do invitation-card cria
+      {/* MODAIS fora do .page â€” o backdrop-filter do invitation-card cria
           um stacking context que prende o position:fixed dentro do pai.
           Movendo para fora, eles cobrem a tela toda corretamente. */}
 
@@ -188,7 +188,7 @@ export default function App() {
         <div className="modal-overlay">
           <div className="modal-content-wrapper">
             <button className="btn-back" onClick={() => setActiveTab(null)}>
-              ← Voltar para o Convite
+              â† Voltar para o Convite
             </button>
             <div className="modal-card-body">
               {activeTab === "rsvp" && <RsvpForm onSuccess={handleSuccessClose} />}
@@ -200,10 +200,49 @@ export default function App() {
       )}
 
       {backgroundUpload.active && (
-        <div style={{ position: "fixed", bottom: "24px", left: "24px", right: "24px", background: "white", padding: "16px", borderRadius: "16px", boxShadow: "0 8px 32px rgba(0,0,0,0.15)", zIndex: 9999, border: "1px solid var(--gold)", transition: "all 0.3s ease" }}>
-          <p style={{ margin: "0 0 10px", fontSize: "0.95rem", color: "var(--ink)", fontWeight: "600", fontFamily: "var(--font-display)" }}>{backgroundUpload.text}</p>
-          <div style={{ background: "rgba(0,0,0,0.05)", borderRadius: "8px", height: "8px", overflow: "hidden" }}>
-            <div style={{ width: `${backgroundUpload.progress}%`, height: "100%", background: "var(--gold)", transition: "width 0.3s ease" }}></div>
+        <div style={{
+          position: "fixed", bottom: 0, left: 0, right: 0,
+          background: backgroundUpload.phase === "done" ? "#f0fdf4" : backgroundUpload.phase === "error" ? "#fef2f2" : "white",
+          padding: "14px 18px",
+          boxShadow: "0 -4px 24px rgba(0,0,0,0.12)",
+          zIndex: 9999,
+          borderTop: backgroundUpload.phase === "done" ? "3px solid #10b981" : backgroundUpload.phase === "error" ? "3px solid #ef4444" : "3px solid var(--gold)",
+          transition: "all 0.3s ease"
+        }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", maxWidth: "500px", margin: "0 auto" }}>
+            <div style={{ fontSize: "1.6rem", flexShrink: 0, lineHeight: 1 }}>
+              {backgroundUpload.phase === "done" ? "\u2705" : backgroundUpload.phase === "error" ? "\u26a0\ufe0f" : "\u{1F4F2}"}
+            </div>
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: "0 0 2px", fontSize: "0.95rem", fontWeight: "700", color: backgroundUpload.phase === "done" ? "#065f46" : backgroundUpload.phase === "error" ? "#991b1b" : "var(--ink)", fontFamily: "var(--font-display)" }}>
+                {backgroundUpload.phase === "done" ? "Fotos enviadas com sucesso!" : backgroundUpload.phase === "error" ? "Erro no envio" : "Enviando em segundo plano..."}
+              </p>
+              {backgroundUpload.phase === "sending" && (
+                <p style={{ margin: "0 0 8px", fontSize: "0.78rem", color: "#555", lineHeight: 1.45 }}>
+                  Pode guardar o celular, usar outros apps ou sair desta tela. O envio continua automaticamente!
+                </p>
+              )}
+              {backgroundUpload.phase === "done" && (
+                <p style={{ margin: "0 0 4px", fontSize: "0.78rem", color: "#065f46" }}>
+                  Obrigado por compartilhar seus momentos com a gente!
+                </p>
+              )}
+              {backgroundUpload.phase === "error" && (
+                <p style={{ margin: "0 0 8px", fontSize: "0.78rem", color: "#991b1b" }}>
+                  Verifique sua internet e tente novamente.
+                </p>
+              )}
+              {backgroundUpload.phase !== "error" && (
+                <>
+                  <div style={{ background: "rgba(0,0,0,0.08)", borderRadius: "8px", height: "6px", overflow: "hidden" }}>
+                    <div style={{ width: `${backgroundUpload.progress}%`, height: "100%", background: backgroundUpload.phase === "done" ? "#10b981" : "var(--gold)", transition: "width 0.4s ease" }}></div>
+                  </div>
+                  <p style={{ margin: "4px 0 0", fontSize: "0.72rem", color: "#999" }}>
+                    {backgroundUpload.progress}% concluido
+                  </p>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -211,42 +250,42 @@ export default function App() {
       {showTour && (
         <div className="tour-overlay">
           <div className="tour-card">
-            <button className="tour-close-btn" onClick={handleFinishTour} aria-label="Fechar tour">×</button>
+            <button className="tour-close-btn" onClick={handleFinishTour} aria-label="Fechar tour">Ã—</button>
             <div className="tour-step-indicator">Passo {tourStep} de 4</div>
             {tourStep === 1 && (
               <>
                 <h4 className="tour-title">Seja bem-vindo!</h4>
-                <p className="tour-text">Preparamos este espaço com muito amor para o batizado da Analu. Vamos fazer um tour rápido de 15 segundos para te mostrar como interagir com o convite?</p>
+                <p className="tour-text">Preparamos este espaÃ§o com muito amor para o batizado da Analu. Vamos fazer um tour rÃ¡pido de 15 segundos para te mostrar como interagir com o convite?</p>
                 <div className="tour-actions">
                   <button className="btn-tour-skip" onClick={handleFinishTour}>Pular Tour</button>
-                  <button className="btn-tour-next" onClick={() => setTourStep(2)}>Começar!</button>
+                  <button className="btn-tour-next" onClick={() => setTourStep(2)}>ComeÃ§ar!</button>
                 </div>
               </>
             )}
             {tourStep === 2 && (
               <>
-                <h4 className="tour-title">Confirmar Presença</h4>
-                <p className="tour-text">No primeiro cartão, você confirma sua presença e de seus acompanhantes, nos informando em quais momentos do evento irá nos prestigiar.</p>
+                <h4 className="tour-title">Confirmar PresenÃ§a</h4>
+                <p className="tour-text">No primeiro cartÃ£o, vocÃª confirma sua presenÃ§a e de seus acompanhantes, nos informando em quais momentos do evento irÃ¡ nos prestigiar.</p>
                 <div className="tour-actions">
                   <button className="btn-tour-skip" onClick={() => setTourStep(1)}>Voltar</button>
-                  <button className="btn-tour-next" onClick={() => setTourStep(3)}>Avançar</button>
+                  <button className="btn-tour-next" onClick={() => setTourStep(3)}>AvanÃ§ar</button>
                 </div>
               </>
             )}
             {tourStep === 3 && (
               <>
-                <h4 className="tour-title">Localização</h4>
-                <p className="tour-text">No segundo cartão, você pode consultar o endereço exato, visualizar o mapa do local e abrir rotas direto no seu GPS (Waze ou Maps).</p>
+                <h4 className="tour-title">LocalizaÃ§Ã£o</h4>
+                <p className="tour-text">No segundo cartÃ£o, vocÃª pode consultar o endereÃ§o exato, visualizar o mapa do local e abrir rotas direto no seu GPS (Waze ou Maps).</p>
                 <div className="tour-actions">
                   <button className="btn-tour-skip" onClick={() => setTourStep(2)}>Voltar</button>
-                  <button className="btn-tour-next" onClick={() => setTourStep(4)}>Avançar</button>
+                  <button className="btn-tour-next" onClick={() => setTourStep(4)}>AvanÃ§ar</button>
                 </div>
               </>
             )}
             {tourStep === 4 && (
               <>
                 <h4 className="tour-title">Enviar Fotos</h4>
-                <p className="tour-text">No terceiro cartão, você pode enviar e compartilhar as fotos tiradas no batizado para criarmos juntos um lindo álbum de recordações!</p>
+                <p className="tour-text">No terceiro cartÃ£o, vocÃª pode enviar e compartilhar as fotos tiradas no batizado para criarmos juntos um lindo Ã¡lbum de recordaÃ§Ãµes!</p>
                 <div className="tour-actions">
                   <button className="btn-tour-skip" onClick={() => setTourStep(3)}>Voltar</button>
                   <button className="btn-tour-next" onClick={handleFinishTour}>Concluir</button>
