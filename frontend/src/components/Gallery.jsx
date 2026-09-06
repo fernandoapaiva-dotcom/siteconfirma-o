@@ -185,7 +185,12 @@ function Lightbox({ photos, startIndex, onClose }) {
     window.history.pushState({ lightbox: true }, "");
     const handlePop = () => onClose();
     window.addEventListener("popstate", handlePop);
-    return () => window.removeEventListener("popstate", handlePop);
+    // Bloqueia scroll da pagina
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("popstate", handlePop);
+      document.body.style.overflow = "";
+    };
   }, []);
 
   const close = () => {
@@ -196,61 +201,176 @@ function Lightbox({ photos, startIndex, onClose }) {
   const next = (e) => { e.stopPropagation(); setIdx(function(p) { return (p + 1) % photos.length; }); };
   const prev = (e) => { e.stopPropagation(); setIdx(function(p) { return (p - 1 + photos.length) % photos.length; }); };
 
+  const btnStyle = {
+    background: "rgba(0,0,0,0.4)",
+    backdropFilter: "blur(6px)",
+    border: "none",
+    color: "white",
+    borderRadius: "50%",
+    width: "40px",
+    height: "40px",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10001,
+    flexShrink: 0
+  };
+
   return React.createElement("div", {
-    style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.97)", zIndex: 9999, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" },
-    onClick: close
+    style: {
+      position: "fixed", inset: 0,
+      background: "black",
+      zIndex: 9999,
+      display: "flex",
+      flexDirection: "column"
+    }
   },
-    // Botao X
-    React.createElement("button", {
-      onClick: function(e) { e.stopPropagation(); close(); },
-      style: { position: "absolute", top: "16px", right: "16px", background: "rgba(255,255,255,0.15)", border: "none", color: "white", borderRadius: "50%", width: "42px", height: "42px", fontSize: "22px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10001 }
-    }, "\u00d7"),
-
-    // Nome
+    // Barra superior
     React.createElement("div", {
-      style: { position: "absolute", top: "18px", left: "16px", zIndex: 10001 }
-    },
-      React.createElement("span", {
-        style: { background: "rgba(255,255,255,0.18)", color: "white", padding: "4px 14px", borderRadius: "20px", fontSize: "0.85rem", fontWeight: "700" }
-      }, current.uploaderName ? current.uploaderName.trim() : "")
-    ),
-
-    photos.length > 1 && React.createElement("button", {
-      onClick: prev,
-      style: { position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", background: "rgba(255,255,255,0.15)", border: "none", color: "white", fontSize: "28px", borderRadius: "50%", width: "46px", height: "46px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10001 }
-    }, "\u276c"),
-
-    React.createElement("div", {
-      style: { display: "flex", width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
+      style: {
+        position: "absolute", top: 0, left: 0, right: 0,
+        padding: "12px 16px",
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        background: "linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)",
+        zIndex: 10001
+      },
       onClick: function(e) { e.stopPropagation(); }
     },
+      React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "10px" } },
+        React.createElement("span", {
+          style: {
+            background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)",
+            color: "white", padding: "5px 14px", borderRadius: "20px",
+            fontSize: "0.85rem", fontWeight: "700"
+          }
+        }, current.uploaderName ? current.uploaderName.trim() : ""),
+        photos.length > 1 && React.createElement("span", {
+          style: { color: "rgba(255,255,255,0.6)", fontSize: "0.8rem" }
+        }, (idx + 1) + " / " + photos.length)
+      ),
+      React.createElement("button", {
+        onClick: function(e) { e.stopPropagation(); close(); },
+        style: Object.assign({}, btnStyle, { fontSize: "20px" })
+      }, "\u00d7")
+    ),
+
+    // Midia central - ocupa todo o espaco restante
+    React.createElement("div", {
+      style: {
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "relative",
+        overflow: "hidden"
+      },
+      onClick: close
+    },
+      // Seta anterior
+      photos.length > 1 && React.createElement("button", {
+        onClick: prev,
+        style: Object.assign({}, btnStyle, {
+          position: "absolute", left: "12px", zIndex: 10001, fontSize: "22px"
+        })
+      }, "\u276c"),
+
+      // Imagem ou video
       isVideo
         ? React.createElement("iframe", {
             key: current.id,
             src: "https://drive.google.com/file/d/" + current.id + "/preview",
-            style: { width: "90vw", height: "75vh", border: "none", borderRadius: "8px" },
+            style: {
+              width: "100vw",
+              height: "100%",
+              border: "none"
+            },
             allow: "autoplay; fullscreen",
-            allowFullScreen: true
+            allowFullScreen: true,
+            onClick: function(e) { e.stopPropagation(); }
           })
         : React.createElement("img", {
             key: current.id,
             src: driveThumb(current.id, 1600),
-            alt: "Foto expandida",
-            style: { maxWidth: "92vw", maxHeight: "82vh", objectFit: "contain", borderRadius: "8px", boxShadow: "0 0 30px rgba(0,0,0,0.6)" }
-          })
+            alt: "Foto de " + (current.uploaderName || ""),
+            style: {
+              maxWidth: "100vw",
+              maxHeight: "100%",
+              width: "auto",
+              height: "auto",
+              objectFit: "contain",
+              display: "block"
+            },
+            onClick: function(e) { e.stopPropagation(); }
+          }),
+
+      // Seta proxima
+      photos.length > 1 && React.createElement("button", {
+        onClick: next,
+        style: Object.assign({}, btnStyle, {
+          position: "absolute", right: "12px", zIndex: 10001, fontSize: "22px"
+        })
+      }, "\u276d")
     ),
 
-    photos.length > 1 && React.createElement(React.Fragment, null,
-      React.createElement("div", {
-        style: { position: "absolute", bottom: "16px", color: "rgba(255,255,255,0.7)", fontSize: "0.85rem" }
-      }, (idx + 1) + " / " + photos.length),
+    // Barra inferior com like e compartilhar
+    React.createElement("div", {
+      style: {
+        position: "absolute", bottom: 0, left: 0, right: 0,
+        padding: "12px 20px",
+        display: "flex", justifyContent: "center", gap: "16px", alignItems: "center",
+        background: "linear-gradient(to top, rgba(0,0,0,0.7), transparent)",
+        zIndex: 10001
+      },
+      onClick: function(e) { e.stopPropagation(); }
+    },
       React.createElement("button", {
-        onClick: next,
-        style: { position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", background: "rgba(255,255,255,0.15)", border: "none", color: "white", fontSize: "28px", borderRadius: "50%", width: "46px", height: "46px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10001 }
-      }, "\u276d")
+        onClick: function(e) {
+          e.stopPropagation();
+          fetch("/api/gallery/" + current.id + "/like", { method: "POST" })
+            .then(function(r) { return r.json(); })
+            .catch(function() {});
+        },
+        style: Object.assign({}, btnStyle, {
+          borderRadius: "24px", padding: "0 16px", width: "auto",
+          fontSize: "0.85rem", gap: "6px"
+        })
+      },
+        React.createElement("svg", { width: 14, height: 14, viewBox: "0 0 24 24", fill: "white" },
+          React.createElement("path", { d: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" })
+        ),
+        React.createElement("span", null, "Curtir")
+      ),
+      React.createElement("button", {
+        onClick: function(e) {
+          e.stopPropagation();
+          const url = isVideo
+            ? "https://drive.google.com/file/d/" + current.id + "/view?usp=sharing"
+            : driveThumb(current.id, 1200);
+          if (navigator.share) {
+            navigator.share({ title: "Batizado da Analu", url: url }).catch(function() {});
+          } else {
+            navigator.clipboard.writeText(url).then(function() { alert("Link copiado!"); }).catch(function() {});
+          }
+        },
+        style: Object.assign({}, btnStyle, {
+          borderRadius: "24px", padding: "0 16px", width: "auto",
+          fontSize: "0.85rem", gap: "6px"
+        })
+      },
+        React.createElement("svg", { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "white", strokeWidth: "2.2", strokeLinecap: "round", strokeLinejoin: "round" },
+          React.createElement("circle", { cx: "18", cy: "5", r: "3" }),
+          React.createElement("circle", { cx: "6", cy: "12", r: "3" }),
+          React.createElement("circle", { cx: "18", cy: "19", r: "3" }),
+          React.createElement("line", { x1: "8.59", y1: "13.51", x2: "15.42", y2: "17.49" }),
+          React.createElement("line", { x1: "15.41", y1: "6.51", x2: "8.59", y2: "10.49" })
+        ),
+        React.createElement("span", null, "Compartilhar")
+      )
     )
   );
 }
+
 
 export default function Gallery() {
   const [photos, setPhotos] = useState([]);
