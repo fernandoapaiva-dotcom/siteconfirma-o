@@ -269,13 +269,18 @@ function Lightbox({ photos, startIndex, onClose }) {
     },
       isVideo
         ? React.createElement("div", {
-            style: { width: "100vw", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center" },
+            style: { width: "100vw", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#000" },
             onClick: function(e) { e.stopPropagation(); }
           },
             React.createElement("iframe", {
               key: current.id,
               src: "https://drive.google.com/file/d/" + current.id + "/preview",
-              style: { width: "100vw", height: "56.25vw", maxHeight: "100vh", border: "none" },
+              style: {
+                width: "100vw",
+                height: "calc(100vh - 120px)",
+                border: "none",
+                display: "block"
+              },
               allow: "autoplay; fullscreen",
               allowFullScreen: true
             })
