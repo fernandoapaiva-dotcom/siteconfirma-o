@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
+import ReactDOM from "react-dom";
 
 function driveThumb(fileId, size) {
   return "https://drive.google.com/thumbnail?id=" + fileId + "&sz=w" + (size || 400);
@@ -176,16 +177,18 @@ function UploaderCarousel({ uploader, photos, onOpenLightbox }) {
 }
 
 // Lightbox global
+
 function Lightbox({ photos, startIndex, onClose }) {
   const [idx, setIdx] = useState(startIndex || 0);
   const current = photos[idx];
   const isVideo = current.mimeType && current.mimeType.startsWith("video");
 
   useEffect(() => {
+    // Push history para o botao voltar do Android funcionar
     window.history.pushState({ lightbox: true }, "");
     const handlePop = () => onClose();
     window.addEventListener("popstate", handlePop);
-    // Bloqueia scroll da pagina
+    // Bloqueia scroll da pagina de fundo
     document.body.style.overflow = "hidden";
     return () => {
       window.removeEventListener("popstate", handlePop);
@@ -201,145 +204,149 @@ function Lightbox({ photos, startIndex, onClose }) {
   const next = (e) => { e.stopPropagation(); setIdx(function(p) { return (p + 1) % photos.length; }); };
   const prev = (e) => { e.stopPropagation(); setIdx(function(p) { return (p - 1 + photos.length) % photos.length; }); };
 
-  const btnStyle = {
-    background: "rgba(0,0,0,0.4)",
-    backdropFilter: "blur(6px)",
-    border: "none",
-    color: "white",
-    borderRadius: "50%",
-    width: "40px",
-    height: "40px",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 10001,
-    flexShrink: 0
-  };
-
-  return React.createElement("div", {
+  const overlay = React.createElement("div", {
     style: {
-      position: "fixed", inset: 0,
-      background: "black",
-      zIndex: 9999,
+      position: "fixed",
+      top: 0, left: 0, right: 0, bottom: 0,
+      width: "100vw",
+      height: "100vh",
+      background: "#000",
+      zIndex: 99999,
       display: "flex",
-      flexDirection: "column"
-    }
+      flexDirection: "column",
+      overflow: "hidden"
+    },
+    onClick: close
   },
-    // Barra superior
+
+    // === BARRA SUPERIOR ===
     React.createElement("div", {
       style: {
-        position: "absolute", top: 0, left: 0, right: 0,
+        flexShrink: 0,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
         padding: "12px 16px",
-        display: "flex", justifyContent: "space-between", alignItems: "center",
-        background: "linear-gradient(to bottom, rgba(0,0,0,0.7), transparent)",
-        zIndex: 10001
+        background: "linear-gradient(to bottom, rgba(0,0,0,0.75), transparent)",
+        position: "absolute",
+        top: 0, left: 0, right: 0,
+        zIndex: 2
       },
       onClick: function(e) { e.stopPropagation(); }
     },
       React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "10px" } },
         React.createElement("span", {
           style: {
-            background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)",
+            background: "rgba(255,255,255,0.18)", backdropFilter: "blur(8px)",
             color: "white", padding: "5px 14px", borderRadius: "20px",
             fontSize: "0.85rem", fontWeight: "700"
           }
         }, current.uploaderName ? current.uploaderName.trim() : ""),
         photos.length > 1 && React.createElement("span", {
-          style: { color: "rgba(255,255,255,0.6)", fontSize: "0.8rem" }
+          style: { color: "rgba(255,255,255,0.55)", fontSize: "0.78rem" }
         }, (idx + 1) + " / " + photos.length)
       ),
       React.createElement("button", {
         onClick: function(e) { e.stopPropagation(); close(); },
-        style: Object.assign({}, btnStyle, { fontSize: "20px" })
+        style: {
+          background: "rgba(255,255,255,0.18)", border: "none", color: "white",
+          borderRadius: "50%", width: "38px", height: "38px", fontSize: "20px",
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center"
+        }
       }, "\u00d7")
     ),
 
-    // Midia central - ocupa todo o espaco restante
+    // === AREA CENTRAL DA MIDIA ===
     React.createElement("div", {
       style: {
-        flex: 1,
+        position: "absolute",
+        top: 0, left: 0, right: 0, bottom: 0,
         display: "flex",
         alignItems: "center",
-        justifyContent: "center",
-        position: "relative",
-        overflow: "hidden"
+        justifyContent: "center"
       },
       onClick: close
     },
-      // Seta anterior
-      photos.length > 1 && React.createElement("button", {
-        onClick: prev,
-        style: Object.assign({}, btnStyle, {
-          position: "absolute", left: "12px", zIndex: 10001, fontSize: "22px"
-        })
-      }, "\u276c"),
-
-      // Imagem ou video
       isVideo
-        ? React.createElement("iframe", {
-            key: current.id,
-            src: "https://drive.google.com/file/d/" + current.id + "/preview",
-            style: {
-              width: "100vw",
-              height: "100%",
-              border: "none"
-            },
-            allow: "autoplay; fullscreen",
-            allowFullScreen: true,
+        ? React.createElement("div", {
+            style: { width: "100vw", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center" },
             onClick: function(e) { e.stopPropagation(); }
-          })
+          },
+            React.createElement("iframe", {
+              key: current.id,
+              src: "https://drive.google.com/file/d/" + current.id + "/preview",
+              style: { width: "100vw", height: "56.25vw", maxHeight: "100vh", border: "none" },
+              allow: "autoplay; fullscreen",
+              allowFullScreen: true
+            })
+          )
         : React.createElement("img", {
             key: current.id,
             src: driveThumb(current.id, 1600),
             alt: "Foto de " + (current.uploaderName || ""),
             style: {
+              display: "block",
               maxWidth: "100vw",
-              maxHeight: "100%",
+              maxHeight: "100vh",
               width: "auto",
               height: "auto",
-              objectFit: "contain",
-              display: "block"
+              objectFit: "contain"
             },
             onClick: function(e) { e.stopPropagation(); }
-          }),
-
-      // Seta proxima
-      photos.length > 1 && React.createElement("button", {
-        onClick: next,
-        style: Object.assign({}, btnStyle, {
-          position: "absolute", right: "12px", zIndex: 10001, fontSize: "22px"
-        })
-      }, "\u276d")
+          })
     ),
 
-    // Barra inferior com like e compartilhar
+    // === SETAS DE NAVEGACAO ===
+    photos.length > 1 && React.createElement("button", {
+      onClick: prev,
+      style: {
+        position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)",
+        background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)",
+        border: "none", color: "white", borderRadius: "50%",
+        width: "42px", height: "42px", fontSize: "22px", cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3
+      }
+    }, "\u276c"),
+
+    photos.length > 1 && React.createElement("button", {
+      onClick: next,
+      style: {
+        position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)",
+        background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)",
+        border: "none", color: "white", borderRadius: "50%",
+        width: "42px", height: "42px", fontSize: "22px", cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3
+      }
+    }, "\u276d"),
+
+    // === BARRA INFERIOR ===
     React.createElement("div", {
       style: {
-        position: "absolute", bottom: 0, left: 0, right: 0,
-        padding: "12px 20px",
+        position: "absolute",
+        bottom: 0, left: 0, right: 0,
+        padding: "20px 20px 28px",
         display: "flex", justifyContent: "center", gap: "16px", alignItems: "center",
-        background: "linear-gradient(to top, rgba(0,0,0,0.7), transparent)",
-        zIndex: 10001
+        background: "linear-gradient(to top, rgba(0,0,0,0.75), transparent)",
+        zIndex: 2
       },
       onClick: function(e) { e.stopPropagation(); }
     },
       React.createElement("button", {
         onClick: function(e) {
           e.stopPropagation();
-          fetch("/api/gallery/" + current.id + "/like", { method: "POST" })
-            .then(function(r) { return r.json(); })
-            .catch(function() {});
+          fetch("/api/gallery/" + current.id + "/like", { method: "POST" }).catch(function() {});
         },
-        style: Object.assign({}, btnStyle, {
-          borderRadius: "24px", padding: "0 16px", width: "auto",
-          fontSize: "0.85rem", gap: "6px"
-        })
+        style: {
+          background: "rgba(255,255,255,0.18)", backdropFilter: "blur(6px)",
+          border: "none", color: "white", borderRadius: "24px",
+          padding: "8px 18px", fontSize: "0.85rem", cursor: "pointer",
+          display: "flex", alignItems: "center", gap: "6px"
+        }
       },
         React.createElement("svg", { width: 14, height: 14, viewBox: "0 0 24 24", fill: "white" },
           React.createElement("path", { d: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" })
         ),
-        React.createElement("span", null, "Curtir")
+        "Curtir"
       ),
       React.createElement("button", {
         onClick: function(e) {
@@ -353,10 +360,12 @@ function Lightbox({ photos, startIndex, onClose }) {
             navigator.clipboard.writeText(url).then(function() { alert("Link copiado!"); }).catch(function() {});
           }
         },
-        style: Object.assign({}, btnStyle, {
-          borderRadius: "24px", padding: "0 16px", width: "auto",
-          fontSize: "0.85rem", gap: "6px"
-        })
+        style: {
+          background: "rgba(255,255,255,0.18)", backdropFilter: "blur(6px)",
+          border: "none", color: "white", borderRadius: "24px",
+          padding: "8px 18px", fontSize: "0.85rem", cursor: "pointer",
+          display: "flex", alignItems: "center", gap: "6px"
+        }
       },
         React.createElement("svg", { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "white", strokeWidth: "2.2", strokeLinecap: "round", strokeLinejoin: "round" },
           React.createElement("circle", { cx: "18", cy: "5", r: "3" }),
@@ -365,12 +374,15 @@ function Lightbox({ photos, startIndex, onClose }) {
           React.createElement("line", { x1: "8.59", y1: "13.51", x2: "15.42", y2: "17.49" }),
           React.createElement("line", { x1: "15.41", y1: "6.51", x2: "8.59", y2: "10.49" })
         ),
-        React.createElement("span", null, "Compartilhar")
+        "Compartilhar"
       )
     )
   );
-}
 
+  // USA PORTAL para renderizar fora do stacking context do invitation-card
+  // (backdrop-filter do card prende position:fixed dentro do seu proprio context)
+  return ReactDOM.createPortal(overlay, document.body);
+}
 
 export default function Gallery() {
   const [photos, setPhotos] = useState([]);
