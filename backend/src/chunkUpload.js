@@ -43,6 +43,30 @@ export async function handleChunkUpload(req, res) {
   }
 }
 
+export function handleChunkStatus(req, res) {
+  try {
+    const { uploadId } = req.params;
+    if (!uploadId) return res.status(400).json({ error: "UploadId obrigatorio" });
+
+    // Se já foi concluído e montado
+    if (completedUploads.has(uploadId)) {
+      return res.json({ completed: true, chunks: [] });
+    }
+
+    const uploadDir = path.join(TEMP_DIR, uploadId);
+    if (!fs.existsSync(uploadDir)) {
+      return res.json({ exists: false, chunks: [] });
+    }
+
+    const files = fs.readdirSync(uploadDir);
+    const chunks = files.map(f => parseInt(f, 10)).filter(n => !isNaN(n));
+    res.json({ exists: true, chunks });
+  } catch (err) {
+    console.error("Erro ao verificar status do chunk:", err);
+    res.status(500).json({ error: "Falha ao verificar status" });
+  }
+}
+
 export async function handleChunkComplete(req, res) {
   try {
     const { uploadId, fileName, mimeType, nome, totalChunks } = req.body;

@@ -3,16 +3,17 @@
  * 
  * Mantém a execução do JavaScript e transferências de rede ativas mesmo quando:
  * 1. O usuário minimiza o navegador e abre o Instagram, WhatsApp, etc.
- * 2. O usuário bloqueia a tela do celular e coloca o aparelho no bolso.
+ * 2. O usuário bloqueia a tela do celular ou desliga a tela física.
  * 
- * Mecanismos combinados:
- * - HTML5 Silent Audio Media Session (Classifica a aba como player de mídia ativo no iOS e Android)
- * - MediaSession API (playbackState = "playing")
- * - Screen WakeLock API (mantém tela ligada enquanto o app estiver no foco)
- * - Auto-recovery no evento 'visibilitychange'
+ * Mecanismos:
+ * - HTML5 Audio Element anexado ao DOM apontando para stream HTTP real (/audio/silent.mp3)
+ * - Volume ativo não-silenciado pelo SO (o arquivo contém apenas amostras de amplitude 0 = silêncio absoluto)
+ * - MediaSession API com action handlers ativos
+ * - Screen WakeLock API contínuo
+ * - Retomada imediata em visibilitychange/pageshow/focus
  */
 
-const SILENT_WAV_BASE64 =
+const FALLBACK_SILENT_WAV =
   "data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";
 
 class BackgroundKeepAlive {
@@ -28,60 +29,96 @@ class BackgroundKeepAlive {
    * Inicia o modo segundo plano. DEVE ser chamado dentro de um evento de clique/submit do usuário.
    */
   start() {
-    if (this.isActive) return;
+    if (this.isActive && this.audioEl && !this.audioEl.paused) return;
     this.isActive = true;
 
-    // 1. Silent Audio Element (Garante execução no iOS Safari e Android Chrome em background)
+    // 1. HTML5 Audio anexado ao DOM físico (obrigatório no WebKit/Safari para não ser descartado)
     try {
       if (!this.audioEl) {
-        const audio = new Audio(SILENT_WAV_BASE64);
-        audio.loop = true;
-        audio.volume = 0.05; // Baixíssimo volume inaudível (evita otimização de mudo do Safari)
-        audio.setAttribute("playsinline", "true");
-        audio.setAttribute("webkit-playsinline", "true");
-        audio.setAttribute("x-webkit-airplay", "deny");
-        audio.preload = "auto";
+        let audio = document.getElementById("analu-bg-audio");
+        if (!audio) {
+          audio = document.createElement("audio");
+          audio.id = "analu-bg-audio";
+          audio.setAttribute("playsinline", "true");
+          audio.setAttribute("webkit-playsinline", "true");
+          audio.setAttribute("x-webkit-airplay", "deny");
+          audio.style.position = "fixed";
+          audio.style.opacity = "0.001";
+          audio.style.pointerEvents = "none";
+          audio.style.width = "1px";
+          audio.style.height = "1px";
+          audio.style.bottom = "0";
+          audio.loop = true;
+          audio.src = "/audio/silent.mp3";
+          document.body.appendChild(audio);
+        }
         this.audioEl = audio;
       }
-      
+
+      // Volume 1.0 (o MP3 é matematicamente silencioso, mas impede que o SO marque como "muted" e corte a rede)
+      this.audioEl.volume = 1.0;
+      this.audioEl.muted = false;
+
       const playPromise = this.audioEl.play();
       if (playPromise !== undefined) {
         playPromise.catch((err) => {
-          console.warn("[BackgroundKeepAlive] Audio autoplay não permitido diretamente:", err.message);
+          console.warn("[BackgroundKeepAlive] Fallback para áudio gerado:", err.message);
+          if (this.audioEl) {
+            this.audioEl.src = FALLBACK_SILENT_WAV;
+            this.audioEl.play().catch(() => {});
+          }
         });
       }
     } catch (e) {
-      console.warn("[BackgroundKeepAlive] Falha ao iniciar audio silencioso:", e.message);
+      console.warn("[BackgroundKeepAlive] Erro ao instanciar elemento de áudio:", e.message);
     }
 
-    // 2. MediaSession API (Informa ao SO que há reprodução contínua em segundo plano)
+    // 2. MediaSession API (Sinaliza para o iOS e Android que há reprodução em andamento no lockscreen)
     try {
-      if (typeof navigator !== "undefined" && "mediaSession" in navigator && typeof MediaMetadata !== "undefined") {
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: "Enviando fotos e vídeos...",
-          artist: "Batizado da Analu",
-          album: "Envio em Segundo Plano Ativo",
-        });
-        navigator.mediaSession.playbackState = "playing";
-      }
-    } catch (e) {
-      // Ignora navegadores sem suporte
-    }
-
-    // 3. Web Audio API (Segundo canal de áudio para reforço)
-    try {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (AudioContextClass) {
-        this.audioContext = new AudioContextClass();
-        if (this.audioContext.state === "suspended") {
-          this.audioContext.resume().catch(() => {});
+      if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+        if (typeof MediaMetadata !== "undefined") {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: "Enviando mídias...",
+            artist: "Batizado da Analu",
+            album: "Upload em Segundo Plano",
+          });
         }
+        navigator.mediaSession.playbackState = "playing";
+
+        // Handlers para que o SO mantenha a thread de áudio e rede ativa
+        navigator.mediaSession.setActionHandler("play", () => {
+          if (this.audioEl) this.audioEl.play().catch(() => {});
+          navigator.mediaSession.playbackState = "playing";
+        });
+        navigator.mediaSession.setActionHandler("pause", () => {
+          // Mantém rodando para não abortar upload
+          if (this.audioEl) this.audioEl.play().catch(() => {});
+          navigator.mediaSession.playbackState = "playing";
+        });
       }
     } catch (e) {}
 
-    // 4. Screen Wake Lock
+    // 3. Web Audio Oscillator Silencioso (segundo canal de keep-alive)
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx && !this.audioContext) {
+        this.audioContext = new AudioCtx();
+        const osc = this.audioContext.createOscillator();
+        const gain = this.audioContext.createGain();
+        gain.gain.value = 0.0001; // Quase zero, imperceptível
+        osc.connect(gain);
+        gain.connect(this.audioContext.destination);
+        osc.start();
+      } else if (this.audioContext && this.audioContext.state === "suspended") {
+        this.audioContext.resume().catch(() => {});
+      }
+    } catch (e) {}
+
+    // 4. Wake Lock de Tela (mantém a tela ligada o máximo possível para envio rápido)
     this.requestWakeLock();
+
     document.addEventListener("visibilitychange", this.handleVisibility);
+    window.addEventListener("pageshow", this.handleVisibility);
     window.addEventListener("focus", this.handleVisibility);
   }
 
@@ -102,38 +139,45 @@ class BackgroundKeepAlive {
 
     if (document.visibilityState === "visible") {
       this.requestWakeLock();
-      // Se o áudio foi pausado pelo SO durante background extremo, retoma
-      if (this.audioEl && this.audioEl.paused) {
-        this.audioEl.play().catch(() => {});
-      }
-      if (this.audioContext && this.audioContext.state === "suspended") {
-        this.audioContext.resume().catch(() => {});
-      }
+    }
+
+    // Garante que o áudio não foi pausado pelo SO
+    if (this.audioEl && this.audioEl.paused) {
+      this.audioEl.play().catch(() => {});
+    }
+
+    if (this.audioContext && this.audioContext.state === "suspended") {
+      this.audioContext.resume().catch(() => {});
+    }
+
+    if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = "playing";
     }
   }
 
   stop() {
     this.isActive = false;
     document.removeEventListener("visibilitychange", this.handleVisibility);
+    window.removeEventListener("pageshow", this.handleVisibility);
     window.removeEventListener("focus", this.handleVisibility);
 
-    // Para áudio silencioso
     if (this.audioEl) {
       try {
         this.audioEl.pause();
         this.audioEl.currentTime = 0;
+        if (this.audioEl.parentNode) {
+          this.audioEl.parentNode.removeChild(this.audioEl);
+        }
       } catch (e) {}
       this.audioEl = null;
     }
 
-    // Libera MediaSession
-    try {
-      if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+    if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
+      try {
         navigator.mediaSession.playbackState = "none";
-      }
-    } catch (e) {}
+      } catch (e) {}
+    }
 
-    // Fecha Web Audio
     if (this.audioContext) {
       try {
         this.audioContext.close();
@@ -141,7 +185,6 @@ class BackgroundKeepAlive {
       this.audioContext = null;
     }
 
-    // Libera Wake Lock
     if (this.wakeLockSentinel) {
       try {
         this.wakeLockSentinel.release();

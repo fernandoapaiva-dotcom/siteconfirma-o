@@ -103,7 +103,7 @@ app.get("/api/rsvp/export-pdf", requireAdmin, async (req, res) => {
   }
 });
 
-import { handleChunkUpload, handleChunkComplete } from "./src/chunkUpload.js";
+import { handleChunkUpload, handleChunkComplete, handleChunkStatus } from "./src/chunkUpload.js";
 
 // --- Upload de fotos para o Google Drive ---
 // Aberto pra qualquer convidado com o link do site (sem senha)
@@ -132,6 +132,7 @@ app.post("/api/upload", upload.array("fotos", 10), async (req, res) => {
 // Upload via Chunks (Para arquivos muito grandes como MP4)
 app.post("/api/upload-chunk", upload.single("chunk"), handleChunkUpload);
 app.post("/api/upload-complete", handleChunkComplete);
+app.get("/api/upload-status/:uploadId", handleChunkStatus);
 
 // --- Galeria de Fotos ---
 // Rota publica para listar todas as fotos enviadas

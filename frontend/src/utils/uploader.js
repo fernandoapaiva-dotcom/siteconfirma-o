@@ -1,29 +1,23 @@
 /**
  * Resilient Uploader Engine para Dispositivos Móveis e Desktop
- * - Compressão inteligente de fotos no cliente antes do envio (reduz 10MB -> 500KB)
- * - Upload em Chunks de 2.5MB (ideal para conexões 3G/4G/5G)
- * - Retentativas automáticas exponenciais com detecção de perda de conexão
- * - Suporte a Screen Wake Lock API (evita que a tela apague durante o envio)
- * - Recuperação automática ao alternar entre abas/aplicativos (visibilitychange)
- * - Fila isolada por arquivo (se 1 arquivo falhar após várias tentativas, os outros continuam)
+ * - Streaming Pipeline: Comprime e inicia o envio imediatamente (sem travar em lote)
+ * - Upload em Chunks de 1MB com verificação de status no servidor para retomada instantânea
+ * - BackgroundKeepAlive com MediaSession ativa e WakeLock contínuo
+ * - Resiliência à tela apagada / celular bloqueado com retomada automática em visibilitychange/pageshow
  */
 
 import { backgroundKeepAlive } from "./backgroundKeepAlive.js";
 
-const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB por chunk (rápido e altamente resiliente no 4G/5G mobile)
-const MAX_RETRIES_PER_REQUEST = 15; // 15 retentativas com backoff (mais de 2 minutos de tolerância)
-const REQUEST_TIMEOUT_MS = 60000; // 60s de timeout tolerante para background mobile
+const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB por chunk
+const MAX_RETRIES_PER_REQUEST = 20; // 20 tentativas com tolerância para o celular no bolso
+const REQUEST_TIMEOUT_MS = 60000; // 60s timeout
 
 /**
  * Comprime imagens no navegador preservando alta qualidade visual.
- * Reduz enormemente o consumo de dados móveis e tempo de upload.
  */
 export async function compressImage(file) {
-  // Ignora vídeos ou arquivos muito pequenos
   const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|m4v|3gp|webm|avi)$/i.test(file.name);
   if (isVideo) return file;
-
-  // Se já for menor que 400KB, envia direto
   if (file.size < 400 * 1024) return file;
 
   try {
@@ -32,9 +26,7 @@ export async function compressImage(file) {
     if (typeof createImageBitmap === "function") {
       try {
         sourceImage = await createImageBitmap(file);
-      } catch (e) {
-        // Fallback para HTMLImageElement
-      }
+      } catch (e) {}
     }
 
     if (!sourceImage) {
@@ -96,17 +88,12 @@ export async function compressImage(file) {
 }
 
 /**
- * Espera uma condição (online ou documento visível) ou tempo determinado
+ * Espera uma condição (online ou documento visível) ou tempo determinado.
+ * Se o usuário ligar a tela (visibilitychange -> visible) ou focar a aba, acorda imediatamente!
  */
 function waitOnlineOrDelay(delayMs, onWakeup) {
   return new Promise((resolve) => {
     let timer = null;
-
-    const cleanup = () => {
-      if (timer) clearTimeout(timer);
-      window.removeEventListener("online", handleResume);
-      document.removeEventListener("visibilitychange", handleResume);
-    };
 
     const handleResume = () => {
       cleanup();
@@ -114,12 +101,32 @@ function waitOnlineOrDelay(delayMs, onWakeup) {
       resolve();
     };
 
-    window.addEventListener("online", handleResume);
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") {
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
         handleResume();
       }
-    });
+    };
+
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", handleResume);
+        window.removeEventListener("pageshow", handleResume);
+        window.removeEventListener("focus", handleResume);
+      }
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibility);
+      }
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleResume);
+      window.addEventListener("pageshow", handleResume);
+      window.addEventListener("focus", handleResume);
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
 
     timer = setTimeout(() => {
       cleanup();
@@ -129,13 +136,12 @@ function waitOnlineOrDelay(delayMs, onWakeup) {
 }
 
 /**
- * Executa fetch com retentativa exponencial e resiliência à suspensão mobile
+ * Executa fetch com retentativa exponencial e resiliência à suspensão mobile.
  */
 async function fetchWithRetry(url, options = {}, { maxRetries = MAX_RETRIES_PER_REQUEST, onStatusUpdate } = {}) {
   let attempt = 0;
 
   while (attempt < maxRetries) {
-    // Se estiver offline, aguarda a conexão voltar
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       if (onStatusUpdate) {
         onStatusUpdate("Sem conexão à internet. Aguardando sinal...");
@@ -145,7 +151,9 @@ async function fetchWithRetry(url, options = {}, { maxRetries = MAX_RETRIES_PER_
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const isHidden = typeof document !== "undefined" && document.visibilityState === "hidden";
+    const timeoutMs = isHidden ? 90000 : REQUEST_TIMEOUT_MS;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const res = await fetch(url, {
@@ -159,10 +167,8 @@ async function fetchWithRetry(url, options = {}, { maxRetries = MAX_RETRIES_PER_
         return res;
       }
 
-      // Se o servidor respondeu 4xx ou 5xx
       const isTransientServerErr = res.status >= 500 && res.status <= 504;
       if (!isTransientServerErr && res.status !== 408 && res.status !== 429) {
-        // Erro não transiente (ex: 400 ou 404), lança erro diretamente
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `HTTP ${res.status}`);
       }
@@ -170,22 +176,24 @@ async function fetchWithRetry(url, options = {}, { maxRetries = MAX_RETRIES_PER_
       throw new Error(`HTTP ${res.status}`);
     } catch (err) {
       clearTimeout(timeoutId);
-      attempt++;
 
-      const isAborted = controller.signal.aborted;
-      const isNetworkError = err.name === "TypeError" || isAborted || /failed to fetch|networkerror|aborted|load failed/i.test(err.message);
-
-      if (attempt >= maxRetries) {
-        throw new Error(`Falha após ${maxRetries} tentativas: ${err.message}`);
+      // Se a tela estava desligada/bloqueada, não penaliza o contador de tentativas rapidamente
+      const wasHidden = typeof document !== "undefined" && document.visibilityState === "hidden";
+      if (!wasHidden || attempt % 2 === 0) {
+        attempt++;
       }
 
-      const backoffMs = Math.min(1000 * Math.pow(1.5, attempt), 8000) + Math.random() * 500;
+      if (attempt >= maxRetries) {
+        throw new Error(`Falha após tentativas prolongadas: ${err.message}`);
+      }
+
+      const backoffMs = Math.min(800 * Math.pow(1.3, attempt), 5000) + Math.random() * 400;
 
       if (onStatusUpdate) {
         onStatusUpdate(
-          isNetworkError
-            ? `Conexão instável. Retomando envio (tentativa ${attempt + 1}/${maxRetries})...`
-            : `Aguardando servidor para continuar (tentativa ${attempt + 1}/${maxRetries})...`
+          wasHidden
+            ? `Enviando em segundo plano (tentativa ${attempt + 1}/${maxRetries})...`
+            : `Sinal oscilou. Retomando envio (tentativa ${attempt + 1}/${maxRetries})...`
         );
       }
 
@@ -195,53 +203,21 @@ async function fetchWithRetry(url, options = {}, { maxRetries = MAX_RETRIES_PER_
 }
 
 /**
- * Gerenciador de Screen Wake Lock para manter o celular acordado
+ * Consulta quais chunks já estão no servidor para não reenviar pedaços repetidos
  */
-class WakeLockManager {
-  constructor() {
-    this.sentinel = null;
-    this.isActive = false;
-    this.handleVisibility = this.handleVisibility.bind(this);
-  }
-
-  async acquire() {
-    this.isActive = true;
-    document.addEventListener("visibilitychange", this.handleVisibility);
-    await this.requestLock();
-  }
-
-  async requestLock() {
-    if (!this.isActive || typeof navigator === "undefined" || !("wakeLock" in navigator)) return;
-    try {
-      if (!this.sentinel || this.sentinel.released) {
-        this.sentinel = await navigator.wakeLock.request("screen");
-        this.sentinel.addEventListener("release", () => {
-          this.sentinel = null;
-        });
-      }
-    } catch (err) {
-      // Ignora silenciosamente se o navegador rejeitar
+async function checkServerChunkStatus(uploadId) {
+  try {
+    const res = await fetch(`/api/upload-status/${uploadId}`);
+    if (res.ok) {
+      const data = await res.json();
+      return data;
     }
-  }
-
-  async handleVisibility() {
-    if (document.visibilityState === "visible" && this.isActive) {
-      await this.requestLock();
-    }
-  }
-
-  release() {
-    this.isActive = false;
-    document.removeEventListener("visibilitychange", this.handleVisibility);
-    if (this.sentinel) {
-      this.sentinel.release().catch(() => {});
-      this.sentinel = null;
-    }
-  }
+  } catch (e) {}
+  return { exists: false, chunks: [] };
 }
 
 /**
- * Faz o upload de um único arquivo via Chunks com proteção de retentativas
+ * Faz o upload de um único arquivo via Chunks com suporte a retomada inteligente
  */
 async function uploadSingleFile(file, fileIndex, totalFiles, guestName, state, onProgressUpdate) {
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -251,6 +227,15 @@ async function uploadSingleFile(file, fileIndex, totalFiles, guestName, state, o
     const start = chunkIndex * CHUNK_SIZE;
     const end = Math.min(start + CHUNK_SIZE, file.size);
     const chunkBlob = file.slice(start, end);
+
+    // Antes de reenviar chunk após reconexão, verifica se o servidor já o possui
+    if (chunkIndex > 0) {
+      const status = await checkServerChunkStatus(uploadId);
+      if (status.exists && Array.isArray(status.chunks) && status.chunks.includes(chunkIndex)) {
+        state.addUploadedBytes(chunkBlob.size);
+        continue;
+      }
+    }
 
     const formData = new FormData();
     formData.append("uploadId", uploadId);
@@ -277,7 +262,7 @@ async function uploadSingleFile(file, fileIndex, totalFiles, guestName, state, o
     state.addUploadedBytes(chunkBlob.size);
     onProgressUpdate({
       phase: "sending",
-      statusText: `Enviando arquivo ${fileIndex + 1} de ${totalFiles}...`,
+      statusText: `Enviando ${file.name} (${chunkIndex + 1}/${totalChunks})...`,
       currentFile: fileIndex + 1,
       totalFiles,
       currentFileName: file.name,
@@ -288,7 +273,7 @@ async function uploadSingleFile(file, fileIndex, totalFiles, guestName, state, o
   // Finaliza e monta o arquivo no servidor
   onProgressUpdate({
     phase: "sending",
-    statusText: `Processando arquivo ${fileIndex + 1} de ${totalFiles}...`,
+    statusText: `Processando ${file.name} no servidor...`,
     currentFile: fileIndex + 1,
     totalFiles,
     currentFileName: file.name,
@@ -322,15 +307,14 @@ async function uploadSingleFile(file, fileIndex, totalFiles, guestName, state, o
 }
 
 /**
- * Função principal que gerencia o upload de múltiplas mídias em segundo plano
+ * Função principal: Inicia imediatamente o envio em streaming (processa e envia arquivo por arquivo)
  */
 export async function startResilientUpload(files, guestName, { onProgress, onSuccess, onError }) {
   if (!files || files.length === 0) return;
 
-  // Inicia o guardião de segundo plano (áudio silencioso + mediaSession + wakeLock)
+  // Inicia o guardião de segundo plano com stream real e mediaSession
   backgroundKeepAlive.start();
 
-  // Proteção contra fechamento acidental da página durante o envio
   const beforeUnloadListener = (e) => {
     e.preventDefault();
     e.returnValue = "O envio das suas fotos ainda está em andamento. Deseja sair mesmo assim?";
@@ -339,31 +323,8 @@ export async function startResilientUpload(files, guestName, { onProgress, onSuc
   window.addEventListener("beforeunload", beforeUnloadListener);
 
   try {
-    // 1. Otimização prévia de imagens
-    onProgress({
-      phase: "optimizing",
-      statusText: `Preparando ${files.length} arquivo(s) para envio rápido...`,
-      currentFile: 1,
-      totalFiles: files.length,
-      currentFileName: files[0]?.name || "",
-      progress: 2,
-    });
-
-    const processedFiles = [];
-    for (let i = 0; i < files.length; i++) {
-      onProgress({
-        phase: "optimizing",
-        statusText: `Otimizando arquivo ${i + 1} de ${files.length}...`,
-        currentFile: i + 1,
-        totalFiles: files.length,
-        currentFileName: files[i].name,
-        progress: Math.round(((i + 1) / files.length) * 8),
-      });
-      const optimized = await compressImage(files[i]);
-      processedFiles.push(optimized);
-    }
-
-    const totalBatchBytes = processedFiles.reduce((acc, f) => acc + f.size, 0);
+    const totalFiles = files.length;
+    const approxTotalBytes = files.reduce((acc, f) => acc + f.size, 0);
 
     const state = {
       uploadedBytes: 0,
@@ -372,8 +333,8 @@ export async function startResilientUpload(files, guestName, { onProgress, onSuc
       },
       calculateOverallProgress(additionalBytes = 0, isDone = false) {
         if (isDone) return 100;
-        if (totalBatchBytes === 0) return 100;
-        const raw = ((this.uploadedBytes + additionalBytes) / totalBatchBytes) * 92 + 8; // 8% a 100%
+        if (approxTotalBytes === 0) return 100;
+        const raw = ((this.uploadedBytes + additionalBytes) / approxTotalBytes) * 92 + 5;
         return Math.min(Math.round(raw), 99);
       },
     };
@@ -381,54 +342,75 @@ export async function startResilientUpload(files, guestName, { onProgress, onSuc
     const successList = [];
     const failureList = [];
 
-    // 2. Loop através dos arquivos
-    for (let i = 0; i < processedFiles.length; i++) {
-      const file = processedFiles[i];
+    // STREAMING PIPELINE: Processa e envia cada arquivo IMEDIATAMENTE (sem esperar lote)
+    for (let i = 0; i < totalFiles; i++) {
+      const rawFile = files[i];
+
+      onProgress({
+        phase: "optimizing",
+        statusText: `Preparando ${rawFile.name}...`,
+        currentFile: i + 1,
+        totalFiles,
+        currentFileName: rawFile.name,
+        progress: state.calculateOverallProgress(0, false),
+      });
+
+      // Comprime a imagem imediatamente antes do envio (vídeos passam direto em milissegundos)
+      const processedFile = await compressImage(rawFile);
+
+      onProgress({
+        phase: "sending",
+        statusText: `Enviando arquivo ${i + 1} de ${totalFiles}...`,
+        currentFile: i + 1,
+        totalFiles,
+        currentFileName: processedFile.name,
+        progress: state.calculateOverallProgress(0, false),
+      });
 
       try {
         const result = await uploadSingleFile(
-          file,
+          processedFile,
           i,
-          processedFiles.length,
+          totalFiles,
           guestName || "Convidado",
           state,
           onProgress
         );
-        successList.push({ file: file.name, result });
+        successList.push({ file: processedFile.name, result });
       } catch (err) {
-        console.error(`[Uploader] Falha permanente no envio do arquivo ${file.name}:`, err);
-        failureList.push({ file: file.name, error: err.message });
+        console.error(`[Uploader] Falha permanente no arquivo ${processedFile.name}:`, err);
+        failureList.push({ file: processedFile.name, error: err.message });
       }
     }
 
-    // 3. Conclusão
+    // Conclusão
     if (failureList.length === 0) {
       onProgress({
         phase: "done",
-        statusText: processedFiles.length > 1
-          ? `Todas as ${processedFiles.length} mídias foram enviadas com sucesso!`
-          : "Foto/vídeo enviado com sucesso!",
-        currentFile: processedFiles.length,
-        totalFiles: processedFiles.length,
+        statusText: totalFiles > 1
+          ? `Todas as ${totalFiles} mídias foram enviadas com sucesso!`
+          : "Mídia enviada com sucesso!",
+        currentFile: totalFiles,
+        totalFiles,
         currentFileName: "",
         progress: 100,
       });
-      if (onSuccess) onSuccess({ successCount: successList.length, total: processedFiles.length });
+      if (onSuccess) onSuccess({ successCount: successList.length, total: totalFiles });
     } else if (successList.length > 0) {
       onProgress({
         phase: "partial",
-        statusText: `${successList.length} de ${processedFiles.length} mídias enviadas (${failureList.length} falharam).`,
-        currentFile: processedFiles.length,
-        totalFiles: processedFiles.length,
+        statusText: `${successList.length} de ${totalFiles} mídias enviadas (${failureList.length} falharam).`,
+        currentFile: totalFiles,
+        totalFiles,
         currentFileName: "",
         progress: 100,
       });
-      if (onSuccess) onSuccess({ successCount: successList.length, total: processedFiles.length, failures: failureList });
+      if (onSuccess) onSuccess({ successCount: successList.length, total: totalFiles, failures: failureList });
     } else {
-      throw new Error(`Não foi possível enviar as mídias. Verifique a internet e tente novamente.`);
+      throw new Error("Não foi possível enviar as mídias. Verifique sua conexão.");
     }
   } catch (err) {
-    console.error("[Uploader] Erro fatal no upload:", err);
+    console.error("[Uploader] Erro fatal:", err);
     onProgress({
       phase: "error",
       statusText: "Erro de conexão ao enviar mídias. Tente novamente.",
