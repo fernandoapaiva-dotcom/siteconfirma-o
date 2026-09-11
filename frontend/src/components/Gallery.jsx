@@ -96,14 +96,15 @@ function UploaderCarousel({ uploader, photos, onOpenLightbox }) {
     },
       isVideo
         ? React.createElement(React.Fragment, null,
-            React.createElement("img", {
-              src: driveThumb(photo.id, 800),
-              alt: "Video thumbnail",
-              style: { width: "100%", height: "100%", objectFit: "cover", opacity: 0.7 },
-              onError: function(e) { e.target.style.display = "none"; }
+            React.createElement("video", {
+              src: "/api/video/" + photo.id + "#t=0.5",
+              preload: "metadata",
+              playsInline: true,
+              muted: true,
+              style: { width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }
             }),
             React.createElement("div", {
-              style: { position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", background: "rgba(0,0,0,0.6)", borderRadius: "50%", width: "60px", height: "60px", display: "flex", alignItems: "center", justifyContent: "center" }
+              style: { position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", background: "rgba(0,0,0,0.6)", borderRadius: "50%", width: "60px", height: "60px", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }
             }, React.createElement(PlayIcon))
           )
         : React.createElement("img", {
@@ -143,11 +144,19 @@ function UploaderCarousel({ uploader, photos, onOpenLightbox }) {
           onClick: function() { goTo(i); },
           style: { flexShrink: 0, width: "52px", height: "52px", borderRadius: "8px", overflow: "hidden", cursor: "pointer", border: i === current ? "2.5px solid var(--gold-deep, #b8962e)" : "2.5px solid transparent", position: "relative", transition: "border 0.15s" }
         },
-          React.createElement("img", {
-            src: driveThumb(p.id, 100),
-            alt: "",
-            style: { width: "100%", height: "100%", objectFit: "cover", display: "block" }
-          }),
+          isVid
+            ? React.createElement("video", {
+                src: "/api/video/" + p.id + "#t=0.5",
+                preload: "metadata",
+                playsInline: true,
+                muted: true,
+                style: { width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }
+              })
+            : React.createElement("img", {
+                src: driveThumb(p.id, 100),
+                alt: "",
+                style: { width: "100%", height: "100%", objectFit: "cover", display: "block" }
+              }),
           isVid && React.createElement("div", {
             style: { position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center" }
           }, React.createElement("svg", { width: 12, height: 12, viewBox: "0 0 24 24", fill: "white" }, React.createElement("polygon", { points: "5,3 19,12 5,21" })))
