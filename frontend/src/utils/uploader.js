@@ -19,7 +19,7 @@
 
 import { backgroundKeepAlive } from "./backgroundKeepAlive.js";
 
-const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB por chunk
+const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB por chunk (mais rápido e metade das requisições)
 const BC_CHANNEL_NAME = "analu-upload-channel";
 
 /**
@@ -169,21 +169,6 @@ async function uploadViaBackgroundFetch(files, guestName, { onProgress, onSucces
       );
       totalUploadBytes += chunkBlob.size;
     }
-
-    // Cria um Request para o upload-complete deste arquivo
-    allRequests.push(
-      new Request("/api/upload-complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uploadId,
-          fileName: file.name,
-          mimeType: file.type || "application/octet-stream",
-          nome: guestName,
-          totalChunks,
-        }),
-      })
-    );
   }
 
   onProgress({
@@ -194,9 +179,19 @@ async function uploadViaBackgroundFetch(files, guestName, { onProgress, onSucces
     progress: 5,
   });
 
-  // 2. Inicia o Background Fetch — o browser assume o controle
+  // 2. Inicia o Background Fetch — o browser assume o controle nativo
   try {
     const swReg = await navigator.serviceWorker.ready;
+
+    // Salva o manifesto no cache para o Service Worker consultar se necessário
+    try {
+      const manifestCache = await caches.open("upload-manifest");
+      await manifestCache.put(
+        new Request(`/_manifest/${bgFetchId}`),
+        new Response(JSON.stringify(uploadManifest))
+      );
+    } catch (e) {}
+
     const bgFetch = await swReg.backgroundFetch.fetch(bgFetchId, allRequests, {
       title: `Enviando ${totalFiles} mídia${totalFiles > 1 ? "s" : ""} do batizado...`,
       icons: [
@@ -206,7 +201,7 @@ async function uploadViaBackgroundFetch(files, guestName, { onProgress, onSucces
           type: "image/svg+xml",
         },
       ],
-      downloadTotal: 0, // uploads don't download much
+      downloadTotal: 0,
     });
 
     // Salva o estado no localStorage para recuperação
@@ -344,6 +339,16 @@ async function uploadViaFallback(files, guestName, { onProgress, onSuccess, onEr
   } catch (err) {
     console.warn("[Uploader] Web Worker não suportado:", err.message);
   }
+
+  const handlePageResumed = () => {
+    if (document.visibilityState === "visible") {
+      if (worker) {
+        worker.postMessage({ type: "PAGE_RESUMED" });
+      }
+    }
+  };
+  document.addEventListener("visibilitychange", handlePageResumed);
+  window.addEventListener("focus", handlePageResumed);
 
   try {
     const totalFiles = files.length;
@@ -486,6 +491,8 @@ async function uploadViaFallback(files, guestName, { onProgress, onSuccess, onEr
     });
     if (onError) onError(err);
   } finally {
+    document.removeEventListener("visibilitychange", handlePageResumed);
+    window.removeEventListener("focus", handlePageResumed);
     if (worker) { try { worker.terminate(); } catch (e) {} }
     backgroundKeepAlive.stop();
     window.removeEventListener("beforeunload", beforeUnloadListener);

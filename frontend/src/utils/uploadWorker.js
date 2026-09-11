@@ -3,14 +3,25 @@
  * Executa o loop de envio em chunks em uma thread isolada (Worker),
  * imune ao congelamento de renderização e timers da thread principal do DOM.
  * 
- * Resiliente a background:
- * - Timeouts estritos em cada fetch (12s) para nunca travar em sockets zumbis
- * - Consulta status do servidor antes de retransmitir pedaços já recebidos
- * - Retomada imediata sem perder progresso
+ * Resiliente a background e alternância de abas:
+ * - Timeouts estritos de 15s em cada fetch para nunca travar em sockets mortos
+ * - Acorda imediatamente com evento PAGE_RESUMED ao retornar para a tela
+ * - Consulta status no servidor antes de retransmitir pedaços já gravados
+ * - Retomada instantânea de onde parou
  */
+
+let wakeResolver = null;
 
 self.onmessage = async (e) => {
   const { type, payload } = e.data;
+
+  if (type === "PAGE_RESUMED") {
+    if (wakeResolver) {
+      wakeResolver();
+      wakeResolver = null;
+    }
+    return;
+  }
 
   if (type === "UPLOAD_FILE") {
     const { file, uploadId, guestName, chunkSize, totalChunks } = payload;
@@ -118,8 +129,14 @@ self.onmessage = async (e) => {
             } catch (se) {}
 
             if (!success) {
-              const waitMs = Math.min(500 * attempts, 3000);
-              await new Promise((r) => setTimeout(r, waitMs));
+              const waitMs = Math.min(400 * attempts, 2500);
+              await new Promise((r) => {
+                wakeResolver = r;
+                setTimeout(() => {
+                  wakeResolver = null;
+                  r();
+                }, waitMs);
+              });
             }
           }
         }
@@ -157,7 +174,6 @@ self.onmessage = async (e) => {
           }
         } catch (compErr) {
           completeAttempts++;
-          // Checa se o servidor já concluiu
           try {
             const checkRes = await fetch(`/api/upload-status/${uploadId}`, {
               signal: AbortSignal.timeout(4000),
@@ -173,7 +189,13 @@ self.onmessage = async (e) => {
           } catch (e) {}
 
           if (!completed) {
-            await new Promise((r) => setTimeout(r, 1500));
+            await new Promise((r) => {
+              wakeResolver = r;
+              setTimeout(() => {
+                wakeResolver = null;
+                r();
+              }, 1200);
+            });
           }
         }
       }

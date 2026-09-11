@@ -5,14 +5,9 @@
  * - O usuário troca de app (Instagram, WhatsApp)
  * - O usuário bloqueia a tela do celular
  * - O navegador vai para segundo plano no Android
- * 
- * Background Fetch é a ÚNICA API web que sobrevive à suspensão
- * do processo do browser no Android.
  */
 
-const SW_VERSION = "2.0.0";
-
-// BroadcastChannel para comunicar com a página
+const SW_VERSION = "2.1.0";
 const BC_CHANNEL_NAME = "analu-upload-channel";
 
 function broadcast(data) {
@@ -20,24 +15,21 @@ function broadcast(data) {
     const bc = new BroadcastChannel(BC_CHANNEL_NAME);
     bc.postMessage(data);
     bc.close();
-  } catch (e) {
-    // BroadcastChannel pode não estar disponível em todos os contextos
-  }
+  } catch (e) {}
 }
 
 // Quando o background fetch termina com SUCESSO
 self.addEventListener("backgroundfetchsuccess", (event) => {
   const bgFetch = event.registration;
-  
+
   event.waitUntil(
     (async () => {
       try {
         const records = await bgFetch.matchAll();
-        
-        // Verifica as respostas - cada chunk já foi enviado com sucesso
+
         let allOk = true;
         let failedCount = 0;
-        
+
         for (const record of records) {
           try {
             const response = await record.responseReady;
@@ -50,36 +42,53 @@ self.addEventListener("backgroundfetchsuccess", (event) => {
             failedCount++;
           }
         }
-        
-        // Atualiza a UI da notificação do browser
+
+        // Finaliza qualquer arquivo pendente no manifesto
+        try {
+          const cache = await caches.open("upload-manifest");
+          const manifestRes = await cache.match(`/_manifest/${bgFetch.id}`);
+          if (manifestRes) {
+            const manifest = await manifestRes.json();
+            for (const item of manifest) {
+              await fetch("/api/upload-complete", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(item),
+              }).catch(() => {});
+            }
+            await cache.delete(`/_manifest/${bgFetch.id}`);
+          }
+        } catch (e) {}
+
         if (allOk) {
           event.updateUI({ title: "✅ Mídias enviadas com sucesso!" });
         } else {
-          event.updateUI({ title: `⚠️ ${failedCount} chunks falharam` });
+          event.updateUI({ title: `⚠️ Envio concluído com ${failedCount} avisos` });
         }
-        
-        // Notifica a página (se estiver aberta)
+
+        // Notifica abas abertas
         broadcast({
           type: "BG_FETCH_COMPLETE",
           id: bgFetch.id,
           success: allOk,
           failedCount,
         });
-        
-        // Salva estado no cache para quando a página reabrir
+
+        // Salva estado para abas que reabrirem depois
         try {
-          const cache = await caches.open("upload-state");
-          await cache.put(
+          const stateCache = await caches.open("upload-state");
+          await stateCache.put(
             new Request(`/_upload-state/${bgFetch.id}`),
-            new Response(JSON.stringify({
-              completed: true,
-              success: allOk,
-              failedCount,
-              timestamp: Date.now(),
-            }))
+            new Response(
+              JSON.stringify({
+                completed: true,
+                success: allOk,
+                failedCount,
+                timestamp: Date.now(),
+              })
+            )
           );
         } catch (e) {}
-        
       } catch (err) {
         console.error("[SW] Erro no backgroundfetchsuccess:", err);
       }
@@ -90,27 +99,29 @@ self.addEventListener("backgroundfetchsuccess", (event) => {
 // Quando o background fetch FALHA
 self.addEventListener("backgroundfetchfailure", (event) => {
   const bgFetch = event.registration;
-  
+
   event.waitUntil(
     (async () => {
-      event.updateUI({ title: "⚠️ Erro ao enviar mídias — reabra o site para tentar novamente" });
-      
+      event.updateUI({ title: "⚠️ Erro no envio — reabra o site para continuar" });
+
       broadcast({
         type: "BG_FETCH_FAILED",
         id: bgFetch.id,
         failureReason: bgFetch.failureReason,
       });
-      
+
       try {
-        const cache = await caches.open("upload-state");
-        await cache.put(
+        const stateCache = await caches.open("upload-state");
+        await stateCache.put(
           new Request(`/_upload-state/${bgFetch.id}`),
-          new Response(JSON.stringify({
-            completed: true,
-            success: false,
-            failureReason: bgFetch.failureReason,
-            timestamp: Date.now(),
-          }))
+          new Response(
+            JSON.stringify({
+              completed: true,
+              success: false,
+              failureReason: bgFetch.failureReason,
+              timestamp: Date.now(),
+            })
+          )
         );
       } catch (e) {}
     })()
@@ -119,9 +130,7 @@ self.addEventListener("backgroundfetchfailure", (event) => {
 
 // Quando o usuário clica na notificação do background fetch
 self.addEventListener("backgroundfetchclick", (event) => {
-  event.waitUntil(
-    clients.openWindow("/")
-  );
+  event.waitUntil(clients.openWindow("/"));
 });
 
 // Quando o background fetch é abortado pelo usuário
@@ -133,7 +142,6 @@ self.addEventListener("backgroundfetchabort", (event) => {
   });
 });
 
-// Install e Activate padrão
 self.addEventListener("install", () => {
   self.skipWaiting();
 });
@@ -141,6 +149,3 @@ self.addEventListener("install", () => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(clients.claim());
 });
-
-// Não intercepta nenhum fetch — o SW existe apenas para Background Fetch
-// self.addEventListener("fetch", ...) intencionalmente omitido

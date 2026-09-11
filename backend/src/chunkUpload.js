@@ -42,6 +42,14 @@ export async function assembleUpload(uploadId, fileName, mimeType, nome, totalCh
 
     if (totalChunks !== undefined) {
       const expected = parseInt(totalChunks, 10);
+      let attempts = 0;
+      while (chunkFiles.length < expected && attempts < 30) {
+        await new Promise((r) => setTimeout(r, 1000));
+        attempts++;
+        const currentFiles = fs.readdirSync(uploadDir).filter((f) => /^\d+$/.test(f));
+        chunkFiles.length = 0;
+        chunkFiles.push(...currentFiles.sort((a, b) => parseInt(a, 10) - parseInt(b, 10)));
+      }
       if (chunkFiles.length < expected) {
         throw new Error(`Chunks incompletos: ${chunkFiles.length}/${expected}`);
       }
