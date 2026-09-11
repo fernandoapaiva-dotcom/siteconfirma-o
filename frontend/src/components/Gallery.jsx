@@ -272,17 +272,22 @@ function Lightbox({ photos, startIndex, onClose }) {
             style: { width: "100vw", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#000" },
             onClick: function(e) { e.stopPropagation(); }
           },
-            React.createElement("iframe", {
+            React.createElement("video", {
               key: current.id,
-              src: "https://drive.google.com/file/d/" + current.id + "/preview",
+              src: "/api/video/" + current.id,
+              controls: true,
+              playsInline: true,
+              autoPlay: true,
               style: {
-                width: "100vw",
-                height: "calc(100vh - 120px)",
+                maxWidth: "100vw",
+                maxHeight: "calc(100vh - 120px)",
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                display: "block",
                 border: "none",
-                display: "block"
-              },
-              allow: "autoplay; fullscreen",
-              allowFullScreen: true
+                outline: "none"
+              }
             })
           )
         : React.createElement("img", {
@@ -389,13 +394,13 @@ function Lightbox({ photos, startIndex, onClose }) {
   return ReactDOM.createPortal(overlay, document.body);
 }
 
-export default function Gallery() {
+export default function Gallery({ refreshTrigger }) {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lightbox, setLightbox] = useState(null); // { photos, index }
 
-  useEffect(function() { fetchGallery(); }, []);
+  useEffect(function() { fetchGallery(); }, [refreshTrigger]);
 
   async function fetchGallery() {
     try {

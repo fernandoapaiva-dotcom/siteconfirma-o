@@ -8,6 +8,7 @@ import { uploadPhotoToDrive } from "./src/driveUpload.js";
 import { addConfirmation, listConfirmations } from "./src/sheetsDb.js";
 import { buildGuestListPdf } from "./src/pdfExport.js";
 import { isMockMode } from "./src/googleAuth.js";
+import { getAvailableDriveClient } from "./src/driveManager.js";
 
 const app = express();
 const upload = multer({
@@ -134,6 +135,54 @@ app.post("/api/upload-complete", handleChunkComplete);
 
 // --- Galeria de Fotos ---
 // Rota publica para listar todas as fotos enviadas
+app.get("/api/video/:id", async (req, res) => {
+  try {
+    const fileId = req.params.id;
+    const driveInfo = await getAvailableDriveClient();
+    
+    if (!driveInfo) {
+      return res.redirect(`https://drive.google.com/uc?export=download&id=${fileId}`);
+    }
+
+    const { drive } = driveInfo;
+    const file = await drive.files.get({ fileId, fields: 'size, mimeType' });
+    const fileSize = parseInt(file.data.size, 10);
+    const mimeType = file.data.mimeType || 'video/mp4';
+
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunksize = (end - start) + 1;
+
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': mimeType
+      });
+
+      const stream = await drive.files.get(
+        { fileId, alt: 'media' },
+        { responseType: 'stream', headers: { Range: `bytes=${start}-${end}` } }
+      );
+      stream.data.pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': mimeType
+      });
+      const stream = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'stream' });
+      stream.data.pipe(res);
+    }
+  } catch (err) {
+    console.error("Erro no proxy de video:", err.message);
+    res.status(500).send("Erro ao carregar video");
+  }
+});
+
 app.get("/api/gallery", (req, res) => {
   try {
     const galleryDbPath = path.resolve("./data/gallery.json");

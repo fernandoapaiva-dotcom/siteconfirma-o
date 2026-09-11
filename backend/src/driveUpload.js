@@ -1,4 +1,4 @@
-﻿import { Readable } from "node:stream";
+import { Readable } from "node:stream";
 import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
@@ -48,7 +48,7 @@ function saveFolderCache(cache) {
   fs.writeFileSync(FOLDER_CACHE_PATH, JSON.stringify(cache, null, 2));
 }
 
-async function getOrCreateUserFolder(drive, parentFolderId, uploaderName) {
+export async function getOrCreateUserFolder(drive, parentFolderId, uploaderName) {
   const cache = loadFolderCache();
   const cacheKey = parentFolderId + "::" + uploaderName;
   if (cache[cacheKey]) return cache[cacheKey];

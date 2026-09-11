@@ -65,14 +65,17 @@ export async function getAvailableDriveClient() {
       const limit = parseInt(res.data.storageQuota.limit, 10);
       const usage = parseInt(res.data.storageQuota.usage, 10);
       
-      // Contas Service Account gratuitas podem retornar limit nulo, vamos tentar usar de qualquer forma,
-      // mas se der erro de quota no upload ele vai falhar.
       if (!limit || (limit - usage > 200 * 1024 * 1024)) {
          return { drive, folderId: account.folderId, accountId: account.id };
       } else {
-         console.warn(`[DriveManager] A conta ${account.id} atingiu a cota limite! Pulando para a próxima...`);
+         console.warn(`[DriveManager] A conta ${account.id} atingiu a cota limite! Pulando para a proxima...`);
       }
     } catch (err) {
+      // Service Accounts nao tem storageQuota direto e lancam erro. Assumimos que tem espaco.
+      if (err.message && err.message.includes('do not have storage quota')) {
+         console.log(`[DriveManager] Conta ${account.id} é Service Account. Assumindo cota ilimitada/valida.`);
+         return { drive, folderId: account.folderId, accountId: account.id };
+      }
       console.error(`[DriveManager] Erro ao verificar cota da conta ${account.id}:`, err.message);
       continue;
     }
