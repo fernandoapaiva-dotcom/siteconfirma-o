@@ -1,14 +1,26 @@
 /**
- * Resilient Uploader Engine para Dispositivos Móveis e Desktop
- * - Thread Isolada via Web Worker (imune a congelamentos de abas em segundo plano)
- * - Streaming Pipeline: Comprime e inicia o envio imediatamente
- * - Upload em Chunks de 1MB com verificação de status no servidor
- * - BackgroundKeepAlive com MediaSession ativa e WakeLock contínuo
+ * Resilient Uploader Engine v3 — Background Fetch API
+ * 
+ * ESTRATÉGIA DEFINITIVA para upload em segundo plano no celular:
+ * 
+ * 1. PRIMÁRIO: Background Fetch API (Chrome Android 74+)
+ *    - O BROWSER gerencia os uploads, não o JavaScript
+ *    - Funciona mesmo quando o usuário troca de app ou bloqueia a tela
+ *    - O SO trata como um download/upload nativo do navegador
+ *    - Mostra progresso na barra de notificações do Android
+ * 
+ * 2. FALLBACK: Upload direto com chunks (navegadores sem Background Fetch)
+ *    - Usa Web Worker + backgroundKeepAlive como antes
+ *    - Funciona no desktop e iOS Safari (que não suporta Background Fetch)
+ * 
+ * A compressão de imagens continua sendo feita ANTES do upload começar,
+ * já que precisa do Canvas API (só disponível na thread principal).
  */
 
 import { backgroundKeepAlive } from "./backgroundKeepAlive.js";
 
 const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB por chunk
+const BC_CHANNEL_NAME = "analu-upload-channel";
 
 /**
  * Comprime imagens no navegador preservando alta qualidade visual.
@@ -86,105 +98,237 @@ export async function compressImage(file) {
 }
 
 /**
- * Faz upload de arquivo utilizando o Web Worker isolado em segundo plano
+ * Verifica se o navegador suporta Background Fetch API
  */
-function uploadViaWorker(worker, file, uploadId, guestName, state, onProgressUpdate) {
-  const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-
-  return new Promise((resolve, reject) => {
-    const handleMessage = (e) => {
-      const { type, uploadId: msgUploadId, chunkSize, chunkIndex, result, error } = e.data;
-      if (msgUploadId !== uploadId) return;
-
-      if (type === "CHUNK_PROGRESS") {
-        state.addUploadedBytes(chunkSize);
-        onProgressUpdate({
-          phase: "sending",
-          statusText: `Enviando ${file.name} (${chunkIndex + 1}/${totalChunks})...`,
-          progress: state.calculateOverallProgress(0, false),
-        });
-      } else if (type === "FILE_SUCCESS") {
-        worker.removeEventListener("message", handleMessage);
-        resolve(result);
-      } else if (type === "FILE_ERROR") {
-        worker.removeEventListener("message", handleMessage);
-        reject(new Error(error));
-      }
-    };
-
-    worker.addEventListener("message", handleMessage);
-
-    worker.postMessage({
-      type: "UPLOAD_FILE",
-      payload: {
-        file,
-        uploadId,
-        guestName,
-        chunkSize: CHUNK_SIZE,
-        totalChunks,
-      },
-    });
-  });
+async function supportsBackgroundFetch() {
+  if (!("serviceWorker" in navigator)) return false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    return "backgroundFetch" in reg;
+  } catch (e) {
+    return false;
+  }
 }
 
 /**
- * Fallback caso o navegador não suporte Web Worker
+ * ESTRATÉGIA PRINCIPAL: Background Fetch API
+ * 
+ * Cria todos os Request objects para os chunks de todos os arquivos,
+ * e passa tudo para backgroundFetch.fetch() de uma vez.
+ * O BROWSER gerencia as requisições, não o JavaScript.
  */
-async function uploadFallback(file, fileIndex, totalFiles, guestName, state, onProgressUpdate) {
-  const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-  const uploadId = `upl_${Date.now()}_${fileIndex}_${Math.random().toString(36).substring(2, 7)}`;
+async function uploadViaBackgroundFetch(files, guestName, { onProgress, onSuccess, onError }) {
+  const totalFiles = files.length;
+  const bgFetchId = `upload-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  
+  onProgress({
+    phase: "optimizing",
+    statusText: `Preparando ${totalFiles} arquivo(s) para envio em segundo plano...`,
+    currentFile: 1,
+    totalFiles,
+    progress: 3,
+  });
 
-  for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-    const start = chunkIndex * CHUNK_SIZE;
-    const end = Math.min(start + CHUNK_SIZE, file.size);
-    const chunkBlob = file.slice(start, end);
+  // 1. Prepara todos os Request objects para cada chunk de cada arquivo
+  const allRequests = [];
+  const uploadManifest = []; // Metadata para cada arquivo
+  let totalUploadBytes = 0;
 
-    const formData = new FormData();
-    formData.append("uploadId", uploadId);
-    formData.append("chunkIndex", chunkIndex);
-    formData.append("totalChunks", totalChunks);
-    formData.append("chunk", chunkBlob);
+  for (let fileIdx = 0; fileIdx < totalFiles; fileIdx++) {
+    const file = files[fileIdx];
+    const uploadId = `upl_${Date.now()}_${fileIdx}_${Math.random().toString(36).substring(2, 7)}`;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-    const res = await fetch("/api/upload-chunk", {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!res.ok) {
-      throw new Error(`Falha no chunk ${chunkIndex + 1}`);
-    }
-
-    state.addUploadedBytes(chunkBlob.size);
-    onProgressUpdate({
-      phase: "sending",
-      statusText: `Enviando ${file.name} (${chunkIndex + 1}/${totalChunks})...`,
-      progress: state.calculateOverallProgress(0, false),
-    });
-  }
-
-  const completeRes = await fetch("/api/upload-complete", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    uploadManifest.push({
       uploadId,
       fileName: file.name,
       mimeType: file.type || "application/octet-stream",
-      nome: guestName,
       totalChunks,
-    }),
+    });
+
+    // Cria um Request para cada chunk
+    for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+      const start = chunkIdx * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunkBlob = file.slice(start, end);
+
+      const formData = new FormData();
+      formData.append("uploadId", uploadId);
+      formData.append("chunkIndex", chunkIdx.toString());
+      formData.append("totalChunks", totalChunks.toString());
+      formData.append("fileName", file.name);
+      formData.append("mimeType", file.type || "application/octet-stream");
+      formData.append("nome", guestName || "Convidado");
+      formData.append("chunk", chunkBlob);
+
+      allRequests.push(
+        new Request("/api/upload-chunk", {
+          method: "POST",
+          body: formData,
+        })
+      );
+      totalUploadBytes += chunkBlob.size;
+    }
+
+    // Cria um Request para o upload-complete deste arquivo
+    allRequests.push(
+      new Request("/api/upload-complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uploadId,
+          fileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          nome: guestName,
+          totalChunks,
+        }),
+      })
+    );
+  }
+
+  onProgress({
+    phase: "sending",
+    statusText: "Iniciando envio em segundo plano...",
+    currentFile: 1,
+    totalFiles,
+    progress: 5,
   });
 
-  if (!completeRes.ok) throw new Error("Falha ao finalizar montagem");
-  return await completeRes.json();
+  // 2. Inicia o Background Fetch — o browser assume o controle
+  try {
+    const swReg = await navigator.serviceWorker.ready;
+    const bgFetch = await swReg.backgroundFetch.fetch(bgFetchId, allRequests, {
+      title: `Enviando ${totalFiles} mídia${totalFiles > 1 ? "s" : ""} do batizado...`,
+      icons: [
+        {
+          sizes: "192x192",
+          src: "/vite.svg",
+          type: "image/svg+xml",
+        },
+      ],
+      downloadTotal: 0, // uploads don't download much
+    });
+
+    // Salva o estado no localStorage para recuperação
+    localStorage.setItem("analu_bg_upload", JSON.stringify({
+      id: bgFetchId,
+      totalFiles,
+      guestName,
+      manifest: uploadManifest,
+      startedAt: Date.now(),
+    }));
+
+    // 3. Monitora o progresso enquanto a página está aberta
+    bgFetch.addEventListener("progress", () => {
+      const uploaded = bgFetch.uploaded || 0;
+      const uploadTotal = bgFetch.uploadTotal || totalUploadBytes;
+      const percent = uploadTotal > 0
+        ? Math.min(Math.round((uploaded / uploadTotal) * 92) + 5, 99)
+        : 50;
+
+      onProgress({
+        phase: "sending",
+        statusText: bgFetch.result === ""
+          ? `Enviando em segundo plano... (pode sair do app!)`
+          : "Finalizando...",
+        currentFile: Math.min(Math.ceil((uploaded / uploadTotal) * totalFiles) || 1, totalFiles),
+        totalFiles,
+        progress: percent,
+      });
+    });
+
+    // 4. Escuta via BroadcastChannel quando o SW notifica conclusão
+    const bc = new BroadcastChannel(BC_CHANNEL_NAME);
+    
+    return new Promise((resolve) => {
+      const cleanup = () => {
+        try { bc.close(); } catch (e) {}
+        localStorage.removeItem("analu_bg_upload");
+      };
+
+      bc.onmessage = (event) => {
+        const data = event.data;
+        if (data.id !== bgFetchId) return;
+
+        if (data.type === "BG_FETCH_COMPLETE") {
+          cleanup();
+          if (data.success) {
+            onProgress({
+              phase: "done",
+              statusText: totalFiles > 1
+                ? `Todas as ${totalFiles} mídias foram enviadas com sucesso!`
+                : "Mídia enviada com sucesso!",
+              currentFile: totalFiles,
+              totalFiles,
+              progress: 100,
+            });
+            if (onSuccess) onSuccess({ successCount: totalFiles, total: totalFiles });
+          } else {
+            onProgress({
+              phase: "partial",
+              statusText: `Envio concluído com ${data.failedCount || "alguns"} erros.`,
+              currentFile: totalFiles,
+              totalFiles,
+              progress: 100,
+            });
+            if (onSuccess) onSuccess({ successCount: totalFiles - (data.failedCount || 0), total: totalFiles, failures: [] });
+          }
+          resolve();
+        } else if (data.type === "BG_FETCH_FAILED") {
+          cleanup();
+          onProgress({
+            phase: "error",
+            statusText: "Erro no envio em segundo plano. Reabra o site para tentar novamente.",
+            currentFile: 0,
+            totalFiles,
+            progress: 0,
+          });
+          if (onError) onError(new Error(data.failureReason || "Background fetch failed"));
+          resolve();
+        } else if (data.type === "BG_FETCH_ABORTED") {
+          cleanup();
+          onProgress({
+            phase: "error",
+            statusText: "Envio cancelado.",
+            currentFile: 0,
+            totalFiles,
+            progress: 0,
+          });
+          if (onError) onError(new Error("Upload aborted"));
+          resolve();
+        }
+      };
+
+      // Se o bgFetch já terminou (resultado rápido), verifica
+      if (bgFetch.result === "success") {
+        cleanup();
+        onProgress({
+          phase: "done",
+          statusText: "Mídia enviada com sucesso!",
+          currentFile: totalFiles,
+          totalFiles,
+          progress: 100,
+        });
+        if (onSuccess) onSuccess({ successCount: totalFiles, total: totalFiles });
+        resolve();
+      } else if (bgFetch.result === "failure") {
+        cleanup();
+        if (onError) onError(new Error("Background fetch failed immediately"));
+        resolve();
+      }
+    });
+
+  } catch (err) {
+    console.error("[Uploader] Background Fetch falhou ao iniciar:", err);
+    throw err; // Vai cair no fallback
+  }
 }
 
-/**
- * Função principal: Gerencia upload resiliente em segundo plano
- */
-export async function startResilientUpload(files, guestName, { onProgress, onSuccess, onError }) {
-  if (!files || files.length === 0) return;
 
-  // Inicia guardião de segundo plano com áudio silencioso ativo no DOM e MediaSession
+/**
+ * FALLBACK: Upload via Web Worker ou direto (para browsers sem Background Fetch)
+ */
+async function uploadViaFallback(files, guestName, { onProgress, onSuccess, onError }) {
   backgroundKeepAlive.start();
 
   const beforeUnloadListener = (e) => {
@@ -198,7 +342,7 @@ export async function startResilientUpload(files, guestName, { onProgress, onSuc
   try {
     worker = new Worker(new URL("./uploadWorker.js", import.meta.url), { type: "module" });
   } catch (err) {
-    console.warn("[Uploader] Web Worker não suportado, usando fallback:", err.message);
+    console.warn("[Uploader] Web Worker não suportado:", err.message);
   }
 
   try {
@@ -207,9 +351,7 @@ export async function startResilientUpload(files, guestName, { onProgress, onSuc
 
     const state = {
       uploadedBytes: 0,
-      addUploadedBytes(bytes) {
-        this.uploadedBytes += bytes;
-      },
+      addUploadedBytes(bytes) { this.uploadedBytes += bytes; },
       calculateOverallProgress(additionalBytes = 0, isDone = false) {
         if (isDone) return 100;
         if (approxTotalBytes === 0) return 100;
@@ -222,74 +364,94 @@ export async function startResilientUpload(files, guestName, { onProgress, onSuc
     const failureList = [];
 
     for (let i = 0; i < totalFiles; i++) {
-      const rawFile = files[i];
-
-      onProgress({
-        phase: "optimizing",
-        statusText: `Preparando ${rawFile.name}...`,
-        currentFile: i + 1,
-        totalFiles,
-        currentFileName: rawFile.name,
-        progress: state.calculateOverallProgress(0, false),
-      });
-
-      const processedFile = await compressImage(rawFile);
+      const file = files[i];
 
       onProgress({
         phase: "sending",
         statusText: `Enviando arquivo ${i + 1} de ${totalFiles}...`,
         currentFile: i + 1,
         totalFiles,
-        currentFileName: processedFile.name,
+        currentFileName: file.name,
         progress: state.calculateOverallProgress(0, false),
       });
 
       try {
         const uploadId = `upl_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 7)}`;
-        let result = null;
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
         if (worker) {
-          result = await uploadViaWorker(
-            worker,
-            processedFile,
-            uploadId,
-            guestName || "Convidado",
-            state,
-            (progressData) => {
-              onProgress({
-                ...progressData,
-                currentFile: i + 1,
-                totalFiles,
-                currentFileName: processedFile.name,
-              });
-            }
-          );
+          const result = await new Promise((resolve, reject) => {
+            const handleMessage = (e) => {
+              const { type, uploadId: msgId, chunkSize, chunkIndex, result, error } = e.data;
+              if (msgId !== uploadId) return;
+              if (type === "CHUNK_PROGRESS") {
+                state.addUploadedBytes(chunkSize);
+                onProgress({
+                  phase: "sending",
+                  statusText: `Enviando ${file.name} (${chunkIndex + 1}/${totalChunks})...`,
+                  currentFile: i + 1,
+                  totalFiles,
+                  currentFileName: file.name,
+                  progress: state.calculateOverallProgress(0, false),
+                });
+              } else if (type === "FILE_SUCCESS") {
+                worker.removeEventListener("message", handleMessage);
+                resolve(result);
+              } else if (type === "FILE_ERROR") {
+                worker.removeEventListener("message", handleMessage);
+                reject(new Error(error));
+              }
+            };
+            worker.addEventListener("message", handleMessage);
+            worker.postMessage({
+              type: "UPLOAD_FILE",
+              payload: { file, uploadId, guestName, chunkSize: CHUNK_SIZE, totalChunks },
+            });
+          });
+          successList.push({ file: file.name, result });
         } else {
-          result = await uploadFallback(
-            processedFile,
-            i,
-            totalFiles,
-            guestName || "Convidado",
-            state,
-            (progressData) => {
-              onProgress({
-                ...progressData,
-                currentFile: i + 1,
-                totalFiles,
-                currentFileName: processedFile.name,
-              });
-            }
-          );
+          // Fallback sem Worker
+          for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+            const start = chunkIndex * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, file.size);
+            const chunkBlob = file.slice(start, end);
+            const formData = new FormData();
+            formData.append("uploadId", uploadId);
+            formData.append("chunkIndex", chunkIndex);
+            formData.append("totalChunks", totalChunks);
+            formData.append("chunk", chunkBlob);
+            const res = await fetch("/api/upload-chunk", { method: "POST", body: formData });
+            if (!res.ok) throw new Error(`Falha no chunk ${chunkIndex + 1}`);
+            state.addUploadedBytes(chunkBlob.size);
+            onProgress({
+              phase: "sending",
+              statusText: `Enviando ${file.name} (${chunkIndex + 1}/${totalChunks})...`,
+              currentFile: i + 1,
+              totalFiles,
+              currentFileName: file.name,
+              progress: state.calculateOverallProgress(0, false),
+            });
+          }
+          const completeRes = await fetch("/api/upload-complete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              uploadId,
+              fileName: file.name,
+              mimeType: file.type || "application/octet-stream",
+              nome: guestName,
+              totalChunks,
+            }),
+          });
+          if (!completeRes.ok) throw new Error("Falha ao finalizar montagem");
+          successList.push({ file: file.name, result: await completeRes.json() });
         }
-
-        successList.push({ file: processedFile.name, result });
       } catch (err) {
-        console.error(`[Uploader] Falha permanente no arquivo ${processedFile.name}:`, err);
-        failureList.push({ file: processedFile.name, error: err.message });
+        console.error(`[Uploader] Falha no arquivo ${file.name}:`, err);
+        failureList.push({ file: file.name, error: err.message });
       }
     }
 
-    // Conclusão
     if (failureList.length === 0) {
       onProgress({
         phase: "done",
@@ -298,7 +460,6 @@ export async function startResilientUpload(files, guestName, { onProgress, onSuc
           : "Mídia enviada com sucesso!",
         currentFile: totalFiles,
         totalFiles,
-        currentFileName: "",
         progress: 100,
       });
       if (onSuccess) onSuccess({ successCount: successList.length, total: totalFiles });
@@ -308,12 +469,11 @@ export async function startResilientUpload(files, guestName, { onProgress, onSuc
         statusText: `${successList.length} de ${totalFiles} mídias enviadas (${failureList.length} falharam).`,
         currentFile: totalFiles,
         totalFiles,
-        currentFileName: "",
         progress: 100,
       });
       if (onSuccess) onSuccess({ successCount: successList.length, total: totalFiles, failures: failureList });
     } else {
-      throw new Error("Não foi possível concluir o envio das mídias. Verifique a internet e tente novamente.");
+      throw new Error("Não foi possível concluir o envio das mídias.");
     }
   } catch (err) {
     console.error("[Uploader] Erro fatal:", err);
@@ -322,15 +482,125 @@ export async function startResilientUpload(files, guestName, { onProgress, onSuc
       statusText: "Erro de conexão ao enviar mídias. Tente novamente.",
       currentFile: 0,
       totalFiles: files.length,
-      currentFileName: "",
       progress: 0,
     });
     if (onError) onError(err);
   } finally {
-    if (worker) {
-      try { worker.terminate(); } catch (e) {}
-    }
+    if (worker) { try { worker.terminate(); } catch (e) {} }
     backgroundKeepAlive.stop();
     window.removeEventListener("beforeunload", beforeUnloadListener);
+  }
+}
+
+
+/**
+ * Função principal: Tenta Background Fetch primeiro, fallback para Web Worker
+ */
+export async function startResilientUpload(files, guestName, callbacks) {
+  if (!files || files.length === 0) return;
+
+  const { onProgress } = callbacks;
+
+  // 1. Comprime todas as imagens primeiro (precisa do Canvas na main thread)
+  const processedFiles = [];
+  for (let i = 0; i < files.length; i++) {
+    onProgress({
+      phase: "optimizing",
+      statusText: `Preparando ${files[i].name}...`,
+      currentFile: i + 1,
+      totalFiles: files.length,
+      currentFileName: files[i].name,
+      progress: Math.round((i / files.length) * 5),
+    });
+    processedFiles.push(await compressImage(files[i]));
+  }
+
+  // 2. Tenta Background Fetch API (funciona em segundo plano no Android)
+  const bgFetchSupported = await supportsBackgroundFetch();
+  
+  if (bgFetchSupported) {
+    console.log("[Uploader] ✅ Background Fetch API disponível — upload vai continuar mesmo fora do app");
+    try {
+      await uploadViaBackgroundFetch(processedFiles, guestName, callbacks);
+      return;
+    } catch (err) {
+      console.warn("[Uploader] Background Fetch falhou, usando fallback:", err.message);
+      // Cai para o fallback abaixo
+    }
+  } else {
+    console.log("[Uploader] ⚠️ Background Fetch não disponível — usando Web Worker (upload pode pausar fora do app)");
+  }
+
+  // 3. Fallback: Web Worker + backgroundKeepAlive
+  backgroundKeepAlive.start();
+  await uploadViaFallback(processedFiles, guestName, callbacks);
+}
+
+/**
+ * Verifica se há um upload em background pendente (para quando o usuário reabre o site)
+ */
+export async function checkPendingBackgroundUpload() {
+  try {
+    const stored = localStorage.getItem("analu_bg_upload");
+    if (!stored) return null;
+
+    const data = JSON.parse(stored);
+    
+    if (!("serviceWorker" in navigator)) {
+      localStorage.removeItem("analu_bg_upload");
+      return null;
+    }
+
+    const swReg = await navigator.serviceWorker.ready;
+    if (!("backgroundFetch" in swReg)) {
+      localStorage.removeItem("analu_bg_upload");
+      return null;
+    }
+
+    const bgFetch = await swReg.backgroundFetch.get(data.id);
+    
+    if (!bgFetch) {
+      // Background fetch não existe mais — provavelmente já completou
+      // Verifica o cache de estado do SW
+      try {
+        const cache = await caches.open("upload-state");
+        const stateRes = await cache.match(`/_upload-state/${data.id}`);
+        if (stateRes) {
+          const state = await stateRes.json();
+          localStorage.removeItem("analu_bg_upload");
+          await cache.delete(`/_upload-state/${data.id}`);
+          return {
+            completed: true,
+            success: state.success,
+            totalFiles: data.totalFiles,
+          };
+        }
+      } catch (e) {}
+      
+      localStorage.removeItem("analu_bg_upload");
+      return null;
+    }
+
+    // Ainda em progresso
+    if (bgFetch.result === "") {
+      return {
+        completed: false,
+        bgFetch,
+        totalFiles: data.totalFiles,
+        id: data.id,
+      };
+    }
+
+    // Já completou
+    localStorage.removeItem("analu_bg_upload");
+    return {
+      completed: true,
+      success: bgFetch.result === "success",
+      totalFiles: data.totalFiles,
+    };
+  } catch (e) {
+    console.warn("[Uploader] Erro ao verificar upload pendente:", e);
+    localStorage.removeItem("analu_bg_upload");
+    return null;
   }
 }

@@ -5,7 +5,7 @@ import { saveToGalleryDb, getOrCreateUserFolder } from "./driveUpload.js";
 
 const TEMP_DIR = path.resolve("./data/temp_chunks");
 
-// Cache em memória de uploads recém-concluídos para idempotência (evita erro 404 em retries de rede)
+// Cache em memória de uploads recém-concluídos para idempotência (evita reprocessamento e race conditions)
 const completedUploads = new Map(); // uploadId -> { file, timestamp }
 const pendingAssemblies = new Map(); // uploadId -> Promise
 
@@ -19,13 +19,87 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000).unref();
 
+/**
+ * Função centralizada e segura de montagem de chunks e envio ao Google Drive
+ */
+export async function assembleUpload(uploadId, fileName, mimeType, nome, totalChunks) {
+  if (completedUploads.has(uploadId)) {
+    return completedUploads.get(uploadId).file;
+  }
+
+  if (pendingAssemblies.has(uploadId)) {
+    return await pendingAssemblies.get(uploadId);
+  }
+
+  const uploadDir = path.join(TEMP_DIR, uploadId);
+  if (!fs.existsSync(uploadDir)) {
+    throw new Error("Diretório de chunks não encontrado");
+  }
+
+  const assemblyPromise = (async () => {
+    const chunkFiles = fs.readdirSync(uploadDir).filter((f) => /^\d+$/.test(f));
+    chunkFiles.sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+
+    if (totalChunks !== undefined) {
+      const expected = parseInt(totalChunks, 10);
+      if (chunkFiles.length < expected) {
+        throw new Error(`Chunks incompletos: ${chunkFiles.length}/${expected}`);
+      }
+    }
+
+    const safeFileName = fileName || "arquivo";
+    const assembledPath = path.join(TEMP_DIR, `${uploadId}_${safeFileName}`);
+    const writeStream = fs.createWriteStream(assembledPath);
+
+    for (const chunkFile of chunkFiles) {
+      const chunkData = fs.readFileSync(path.join(uploadDir, chunkFile));
+      writeStream.write(chunkData);
+    }
+    writeStream.end();
+
+    await new Promise((resolve, reject) => {
+      writeStream.on("finish", resolve);
+      writeStream.on("error", reject);
+    });
+
+    const result = await streamFileToDrive(
+      assembledPath,
+      safeFileName,
+      mimeType || "application/octet-stream",
+      nome || "Convidado"
+    );
+
+    try {
+      if (fs.existsSync(assembledPath)) fs.unlinkSync(assembledPath);
+      fs.rmSync(uploadDir, { recursive: true, force: true });
+    } catch (e) {
+      console.warn("[ChunkUpload] Aviso ao limpar temporários:", e.message);
+    }
+
+    completedUploads.set(uploadId, { file: result, timestamp: Date.now() });
+    return result;
+  })();
+
+  pendingAssemblies.set(uploadId, assemblyPromise);
+  try {
+    return await assemblyPromise;
+  } finally {
+    pendingAssemblies.delete(uploadId);
+  }
+}
+
 export async function handleChunkUpload(req, res) {
   try {
-    const { uploadId, chunkIndex, totalChunks } = req.body;
+    const { uploadId, chunkIndex, totalChunks, fileName, mimeType, nome } = req.body;
     const file = req.file;
 
     if (!uploadId || chunkIndex === undefined || totalChunks === undefined || !file) {
       return res.status(400).json({ error: "Parâmetros de chunk ausentes." });
+    }
+
+    // Se este upload já foi completamente processado
+    if (completedUploads.has(uploadId)) {
+      return res.json({ ok: true, chunkIndex: parseInt(chunkIndex, 10), alreadyDone: true });
     }
 
     const uploadDir = path.join(TEMP_DIR, uploadId);
@@ -33,10 +107,41 @@ export async function handleChunkUpload(req, res) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
+    // Salva metadados para caso o auto-assembly precise montar sem requisição extra
+    if (fileName) {
+      const metaPath = path.join(uploadDir, "meta.json");
+      if (!fs.existsSync(metaPath)) {
+        try {
+          fs.writeFileSync(
+            metaPath,
+            JSON.stringify({ uploadId, fileName, mimeType, nome, totalChunks }),
+            "utf8"
+          );
+        } catch (e) {}
+      }
+    }
+
     const chunkPath = path.join(uploadDir, chunkIndex.toString());
     fs.writeFileSync(chunkPath, file.buffer);
 
-    res.json({ ok: true, chunkIndex: parseInt(chunkIndex, 10), size: file.size });
+    const expectedTotal = parseInt(totalChunks, 10);
+    const savedChunks = fs.readdirSync(uploadDir).filter((f) => /^\d+$/.test(f));
+
+    // Se todos os chunks já chegaram no servidor, dispara montagem e upload pro Drive automaticamente!
+    if (savedChunks.length === expectedTotal && fileName) {
+      console.log(`[ChunkUpload] Todos os ${expectedTotal} chunks de ${fileName} recebidos! Iniciando montagem automática...`);
+      assembleUpload(uploadId, fileName, mimeType, nome, expectedTotal).catch((err) => {
+        console.error(`[ChunkUpload] Falha na auto-montagem de ${uploadId}:`, err.message);
+      });
+    }
+
+    res.json({
+      ok: true,
+      chunkIndex: parseInt(chunkIndex, 10),
+      size: file.size,
+      receivedChunks: savedChunks.length,
+      totalChunks: expectedTotal,
+    });
   } catch (err) {
     console.error("Erro no upload do chunk:", err);
     res.status(500).json({ error: "Falha ao salvar chunk" });
@@ -46,9 +151,8 @@ export async function handleChunkUpload(req, res) {
 export function handleChunkStatus(req, res) {
   try {
     const { uploadId } = req.params;
-    if (!uploadId) return res.status(400).json({ error: "UploadId obrigatorio" });
+    if (!uploadId) return res.status(400).json({ error: "UploadId obrigatório" });
 
-    // Se já foi concluído e montado
     if (completedUploads.has(uploadId)) {
       return res.json({ completed: true, chunks: [] });
     }
@@ -59,7 +163,7 @@ export function handleChunkStatus(req, res) {
     }
 
     const files = fs.readdirSync(uploadDir);
-    const chunks = files.map(f => parseInt(f, 10)).filter(n => !isNaN(n));
+    const chunks = files.map((f) => parseInt(f, 10)).filter((n) => !isNaN(n));
     res.json({ exists: true, chunks });
   } catch (err) {
     console.error("Erro ao verificar status do chunk:", err);
@@ -70,90 +174,50 @@ export function handleChunkStatus(req, res) {
 export async function handleChunkComplete(req, res) {
   try {
     const { uploadId, fileName, mimeType, nome, totalChunks } = req.body;
-    
-    if (!uploadId || !fileName || !mimeType) {
+
+    if (!uploadId) {
       return res.status(400).json({ error: "Faltam parâmetros" });
     }
 
-    // 1. Se já foi concluído anteriormente (ex: cliente reenviou por instabilidade na resposta)
+    // Se já finalizado
     if (completedUploads.has(uploadId)) {
       const cached = completedUploads.get(uploadId);
-      console.log(`[ChunkUpload] Upload ${uploadId} já processado anteriormente. Retornando cache com sucesso.`);
       return res.json({ ok: true, file: cached.file, alreadyCompleted: true });
     }
 
-    // 2. Se está sendo montado/enviado no momento por requisição paralela
-    if (pendingAssemblies.has(uploadId)) {
-      console.log(`[ChunkUpload] Upload ${uploadId} já está em processamento. Aguardando conclusão...`);
-      const result = await pendingAssemblies.get(uploadId);
-      return res.json(result);
-    }
-
     const uploadDir = path.join(TEMP_DIR, uploadId);
-    if (!fs.existsSync(uploadDir)) {
-      return res.status(404).json({ error: "UploadId não encontrado." });
-    }
+    let resolvedFileName = fileName;
+    let resolvedMimeType = mimeType;
+    let resolvedNome = nome;
+    let resolvedTotal = totalChunks;
 
-    // Valida se todos os chunks esperados estão presentes
-    const existingChunks = fs.readdirSync(uploadDir);
-    if (totalChunks !== undefined) {
-      const expectedTotal = parseInt(totalChunks, 10);
-      const missing = [];
-      for (let i = 0; i < expectedTotal; i++) {
-        if (!existingChunks.includes(i.toString())) {
-          missing.push(i);
-        }
-      }
-      if (missing.length > 0) {
-        console.warn(`[ChunkUpload] Chunks ausentes para ${uploadId}:`, missing);
-        return res.status(400).json({ error: "missing_chunks", missing });
-      }
-    }
-
-    const assemblyPromise = (async () => {
-      const chunks = fs.readdirSync(uploadDir).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
-      const assembledPath = path.join(TEMP_DIR, `${uploadId}_${fileName}`);
-      
-      // Monta os chunks
-      const writeStream = fs.createWriteStream(assembledPath);
-      for (const chunkFile of chunks) {
-        const chunkData = fs.readFileSync(path.join(uploadDir, chunkFile));
-        writeStream.write(chunkData);
-      }
-      writeStream.end();
-
-      await new Promise((resolve, reject) => {
-        writeStream.on("finish", resolve);
-        writeStream.on("error", reject);
-      });
-
-      // Envia para o Drive
-      const result = await streamFileToDrive(assembledPath, fileName, mimeType, nome || "Convidado");
-
-      // Limpa os arquivos temporários SOMENTE após o sucesso confirmado
+    // Tenta recuperar metadados se não enviados nesta requisição
+    if (fs.existsSync(path.join(uploadDir, "meta.json"))) {
       try {
-        if (fs.existsSync(assembledPath)) fs.unlinkSync(assembledPath);
-        fs.rmSync(uploadDir, { recursive: true, force: true });
-      } catch (cleanupErr) {
-        console.warn("[ChunkUpload] Erro ao limpar arquivos temporários:", cleanupErr.message);
-      }
-
-      const responsePayload = { ok: true, file: result };
-      completedUploads.set(uploadId, { file: result, timestamp: Date.now() });
-      return responsePayload;
-    })();
-
-    pendingAssemblies.set(uploadId, assemblyPromise);
-
-    try {
-      const responsePayload = await assemblyPromise;
-      res.json(responsePayload);
-    } finally {
-      pendingAssemblies.delete(uploadId);
+        const meta = JSON.parse(fs.readFileSync(path.join(uploadDir, "meta.json"), "utf8"));
+        resolvedFileName = resolvedFileName || meta.fileName;
+        resolvedMimeType = resolvedMimeType || meta.mimeType;
+        resolvedNome = resolvedNome || meta.nome;
+        resolvedTotal = resolvedTotal || meta.totalChunks;
+      } catch (e) {}
     }
+
+    if (!resolvedFileName) {
+      return res.status(400).json({ error: "fileName não informado" });
+    }
+
+    const file = await assembleUpload(
+      uploadId,
+      resolvedFileName,
+      resolvedMimeType,
+      resolvedNome,
+      resolvedTotal
+    );
+
+    res.json({ ok: true, file });
   } catch (err) {
     console.error("Erro no chunk complete:", err);
-    res.status(500).json({ error: "Falha ao processar arquivo completo" });
+    res.status(500).json({ error: err.message || "Falha ao processar arquivo completo" });
   }
 }
 
@@ -178,7 +242,7 @@ async function streamFileToDrive(filePath, originalName, mimeType, guestName) {
       fileUrl: publicUrl,
       thumbnailUrl: publicUrl,
       timestamp,
-      mimeType
+      mimeType,
     });
     return { webViewLink: publicUrl };
   }
@@ -186,7 +250,6 @@ async function streamFileToDrive(filePath, originalName, mimeType, guestName) {
   const driveInfo = await getAvailableDriveClient();
   const { drive, folderId: rootFolderId } = driveInfo;
 
-  // Usa subpasta do convidado organizada dentro do Drive
   const userFolderId = await getOrCreateUserFolder(drive, rootFolderId, guestName || "Convidado");
 
   const response = await drive.files.create({
@@ -214,7 +277,7 @@ async function streamFileToDrive(filePath, originalName, mimeType, guestName) {
     fileUrl: response.data.webContentLink || response.data.webViewLink,
     thumbnailUrl: response.data.thumbnailLink || response.data.webContentLink,
     timestamp,
-    mimeType
+    mimeType,
   });
 
   return response.data;

@@ -5,7 +5,7 @@ import PhotoUpload from "./components/PhotoUpload.jsx";
 import LocationMaps from "./components/LocationMaps.jsx";
 import FloatingElements from "./components/FloatingElements.jsx";
 import Gallery from "./components/Gallery.jsx";
-import { startResilientUpload } from "./utils/uploader.js";
+import { startResilientUpload, checkPendingBackgroundUpload } from "./utils/uploader.js";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState(null); // null | "rsvp" | "mapas" | "fotos"
@@ -26,6 +26,82 @@ export default function App() {
     if (!hasSeen) {
       setShowTour(true);
     }
+
+    // Canal de comunicação com o Service Worker
+    let bc = null;
+    try {
+      bc = new BroadcastChannel("analu-upload-channel");
+      bc.onmessage = (e) => {
+        if (e.data?.type === "BG_FETCH_COMPLETE") {
+          setGalleryRefresh((p) => p + 1);
+          setBackgroundUpload({
+            active: true,
+            progress: 100,
+            phase: e.data.success ? "done" : "partial",
+            statusText: e.data.success
+              ? "Mídias enviadas com sucesso em segundo plano!"
+              : "Envio em segundo plano concluído com avisos.",
+            currentFile: 1,
+            totalFiles: 1,
+          });
+          setTimeout(() => setBackgroundUpload((prev) => ({ ...prev, active: false })), 6000);
+        }
+      };
+    } catch (err) {}
+
+    // Verifica se havia um upload em segundo plano quando a página abre ou o usuário volta
+    const checkBg = async () => {
+      try {
+        const pending = await checkPendingBackgroundUpload();
+        if (pending) {
+          if (pending.completed) {
+            setGalleryRefresh((p) => p + 1);
+            setBackgroundUpload({
+              active: true,
+              progress: 100,
+              phase: pending.success ? "done" : "partial",
+              statusText: "Mídias enviadas com sucesso em segundo plano!",
+              currentFile: pending.totalFiles || 1,
+              totalFiles: pending.totalFiles || 1,
+            });
+            setTimeout(() => setBackgroundUpload((prev) => ({ ...prev, active: false })), 6000);
+          } else if (pending.bgFetch) {
+            const bgFetch = pending.bgFetch;
+            setBackgroundUpload({
+              active: true,
+              progress: 50,
+              phase: "sending",
+              statusText: "Enviando mídias em segundo plano...",
+              currentFile: 1,
+              totalFiles: pending.totalFiles || 1,
+            });
+            bgFetch.addEventListener("progress", () => {
+              const uploaded = bgFetch.uploaded || 0;
+              const total = bgFetch.uploadTotal || 1;
+              const p = Math.min(Math.round((uploaded / total) * 92) + 5, 99);
+              setBackgroundUpload((prev) => ({
+                ...prev,
+                progress: p,
+                statusText: "Enviando em segundo plano...",
+              }));
+            });
+          }
+        }
+      } catch (err) {}
+    };
+
+    checkBg();
+    const handleVis = () => {
+      if (document.visibilityState === "visible") {
+        checkBg();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVis);
+
+    return () => {
+      if (bc) bc.close();
+      document.removeEventListener("visibilitychange", handleVis);
+    };
   }, []);
 
   async function handleBackgroundUpload(arquivos, nome) {
