@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { backgroundKeepAlive } from "../utils/backgroundKeepAlive.js";
 
 export default function PhotoUpload({ onSuccess, onBackgroundUpload }) {
   const [nome, setNome] = useState("");
@@ -26,6 +27,13 @@ export default function PhotoUpload({ onSuccess, onBackgroundUpload }) {
   function handleSubmit(e) {
     e.preventDefault();
     if (arquivos.length === 0) return;
+
+    // Dispara a autorização de áudio e segundo plano diretamente pelo toque do usuário
+    try {
+      backgroundKeepAlive.start();
+    } catch (err) {
+      console.warn("Erro ao iniciar keepalive:", err);
+    }
 
     if (onBackgroundUpload) {
       onBackgroundUpload(arquivos, nome.trim() || "Convidado");
@@ -142,8 +150,8 @@ export default function PhotoUpload({ onSuccess, onBackgroundUpload }) {
             : `Enviar ${arquivos.length} ${arquivos.length === 1 ? "mídia" : "mídias de uma vez"}`}
         </button>
 
-        <p style={{ fontSize: "0.74rem", color: "#666", textAlign: "center", marginTop: "10px", lineHeight: 1.4 }}>
-          🛡️ O envio conta com salvamento seguro em segundo plano. Mesmo se você alternar de aplicativo ou mexer no celular, o progresso continuará de onde parou.
+        <p style={{ fontSize: "0.76rem", color: "#4b5563", textAlign: "center", marginTop: "10px", lineHeight: 1.45, fontWeight: "500" }}>
+          🛡️ <strong>Segundo plano inteligente ativado:</strong> você pode navegar em outros apps (Instagram, WhatsApp) ou bloquear o celular enquanto suas fotos e vídeos são enviados!
         </p>
       </form>
     </section>

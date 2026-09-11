@@ -291,8 +291,9 @@ export default function App() {
               </div>
 
               {(backgroundUpload.phase === "sending" || backgroundUpload.phase === "optimizing") && (
-                <p style={{ margin: "0 0 8px", fontSize: "0.78rem", color: "#555", lineHeight: 1.45 }}>
-                  Pode usar outros apps ou sair desta tela. O envio continua em segundo plano e retoma de onde parou se a conexão oscilar!
+                <p style={{ margin: "0 0 8px", fontSize: "0.78rem", color: "#444", lineHeight: 1.45 }}>
+                  <span style={{ display: "inline-block", background: "#ecfdf5", color: "#065f46", border: "1px solid #a7f3d0", padding: "1px 6px", borderRadius: "4px", fontWeight: "600", fontSize: "0.72rem", marginRight: "5px" }}>🛡️ Segundo plano ativo</span>
+                  Pode usar o Instagram ou bloquear a tela: o envio segue sem parar!
                 </p>
               )}
 

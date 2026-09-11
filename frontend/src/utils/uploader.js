@@ -8,9 +8,11 @@
  * - Fila isolada por arquivo (se 1 arquivo falhar após várias tentativas, os outros continuam)
  */
 
-const CHUNK_SIZE = 2.5 * 1024 * 1024; // 2.5MB por chunk
-const MAX_RETRIES_PER_REQUEST = 8;
-const REQUEST_TIMEOUT_MS = 45000; // 45s de timeout para não travar conexões zumbis
+import { backgroundKeepAlive } from "./backgroundKeepAlive.js";
+
+const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB por chunk (rápido e altamente resiliente no 4G/5G mobile)
+const MAX_RETRIES_PER_REQUEST = 15; // 15 retentativas com backoff (mais de 2 minutos de tolerância)
+const REQUEST_TIMEOUT_MS = 60000; // 60s de timeout tolerante para background mobile
 
 /**
  * Comprime imagens no navegador preservando alta qualidade visual.
@@ -325,8 +327,8 @@ async function uploadSingleFile(file, fileIndex, totalFiles, guestName, state, o
 export async function startResilientUpload(files, guestName, { onProgress, onSuccess, onError }) {
   if (!files || files.length === 0) return;
 
-  const wakeLock = new WakeLockManager();
-  await wakeLock.acquire();
+  // Inicia o guardião de segundo plano (áudio silencioso + mediaSession + wakeLock)
+  backgroundKeepAlive.start();
 
   // Proteção contra fechamento acidental da página durante o envio
   const beforeUnloadListener = (e) => {
@@ -437,7 +439,7 @@ export async function startResilientUpload(files, guestName, { onProgress, onSuc
     });
     if (onError) onError(err);
   } finally {
-    wakeLock.release();
+    backgroundKeepAlive.stop();
     window.removeEventListener("beforeunload", beforeUnloadListener);
   }
 }
