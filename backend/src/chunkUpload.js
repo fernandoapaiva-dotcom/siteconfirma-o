@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getAvailableDriveClient, isMockMode } from "./driveManager.js";
-import { saveToGalleryDb, getOrCreateUserFolder } from "./driveUpload.js";
+import { saveToGalleryDb, createFileInUserFolder } from "./driveUpload.js";
 
 const TEMP_DIR = path.resolve("./data/temp_chunks");
 
@@ -278,18 +278,10 @@ async function streamFileToDrive(filePath, originalName, mimeType, guestName) {
   const driveInfo = await getAvailableDriveClient();
   const { drive, folderId: rootFolderId } = driveInfo;
 
-  const userFolderId = await getOrCreateUserFolder(drive, rootFolderId, guestName || "Convidado");
-
-  const response = await drive.files.create({
-    requestBody: {
-      name: fileName,
-      parents: [userFolderId],
-    },
-    media: {
-      mimeType,
-      body: fs.createReadStream(filePath),
-    },
-    fields: "id, name, webViewLink, webContentLink, thumbnailLink",
+  const response = await createFileInUserFolder(drive, rootFolderId, guestName || "Convidado", {
+    name: fileName,
+    mimeType,
+    getBody: () => fs.createReadStream(filePath),
   });
 
   const fileId = response.data.id;

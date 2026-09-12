@@ -48,10 +48,19 @@ function saveFolderCache(cache) {
   fs.writeFileSync(FOLDER_CACHE_PATH, JSON.stringify(cache, null, 2));
 }
 
-export async function getOrCreateUserFolder(drive, parentFolderId, uploaderName) {
+export function invalidateUserFolderCache(parentFolderId, uploaderName) {
   const cache = loadFolderCache();
   const cacheKey = parentFolderId + "::" + uploaderName;
-  if (cache[cacheKey]) return cache[cacheKey];
+  if (cache[cacheKey]) {
+    delete cache[cacheKey];
+    saveFolderCache(cache);
+  }
+}
+
+export async function getOrCreateUserFolder(drive, parentFolderId, uploaderName, { skipCache = false } = {}) {
+  const cache = loadFolderCache();
+  const cacheKey = parentFolderId + "::" + uploaderName;
+  if (!skipCache && cache[cacheKey]) return cache[cacheKey];
 
   // Procura pasta existente no Drive com esse nome dentro do folder pai
   try {
@@ -93,6 +102,40 @@ export async function getOrCreateUserFolder(drive, parentFolderId, uploaderName)
   return folderId;
 }
 
+/**
+ * Cria um arquivo dentro da pasta do convidado, se auto-recuperando quando a pasta
+ * em cache foi apagada/ficou inválida no Drive (erro 404 "File not found" ao criar
+ * dentro dela). Nesse caso invalida o cache, recria a pasta e tenta de novo uma vez —
+ * sem isso, todo envio daquele convidado ficaria travado pra sempre até alguém mexer
+ * manualmente no cache.
+ */
+export async function createFileInUserFolder(drive, rootFolderId, uploaderName, { name, mimeType, getBody }) {
+  let userFolderId = await getOrCreateUserFolder(drive, rootFolderId, uploaderName);
+
+  try {
+    return await drive.files.create({
+      requestBody: { name, parents: [userFolderId] },
+      media: { mimeType, body: getBody() },
+      fields: "id, name, webViewLink, webContentLink, thumbnailLink",
+    });
+  } catch (err) {
+    const isStaleFolder = err.code === 404 || err.status === 404;
+    if (!isStaleFolder) throw err;
+
+    console.warn(`[DriveUpload] Pasta de ${uploaderName} (${userFolderId}) não existe mais no Drive. Recriando...`);
+    invalidateUserFolderCache(rootFolderId, uploaderName);
+    userFolderId = await getOrCreateUserFolder(drive, rootFolderId, uploaderName, { skipCache: true });
+
+    // getBody() é chamado de novo aqui porque um stream já usado na tentativa
+    // anterior não pode ser relido — precisa de uma instância nova.
+    return await drive.files.create({
+      requestBody: { name, parents: [userFolderId] },
+      media: { mimeType, body: getBody() },
+      fields: "id, name, webViewLink, webContentLink, thumbnailLink",
+    });
+  }
+}
+
 export async function uploadPhotoToDrive(file, guestName) {
   const normalized = await normalizeImage(file);
   const uploaderName = (guestName || "Convidado").trim();
@@ -118,19 +161,10 @@ export async function uploadPhotoToDrive(file, guestName) {
   const driveInfo = await getAvailableDriveClient();
   const { drive, folderId: rootFolderId } = driveInfo;
 
-  // Cria ou recupera pasta do usuario dentro do folder raiz
-  const userFolderId = await getOrCreateUserFolder(drive, rootFolderId, uploaderName);
-
-  const response = await drive.files.create({
-    requestBody: {
-      name: fileName,
-      parents: [userFolderId],
-    },
-    media: {
-      mimeType: normalized.mimeType,
-      body: Readable.from(normalized.buffer),
-    },
-    fields: "id, name, webViewLink, webContentLink, thumbnailLink",
+  const response = await createFileInUserFolder(drive, rootFolderId, uploaderName, {
+    name: fileName,
+    mimeType: normalized.mimeType,
+    getBody: () => Readable.from(normalized.buffer),
   });
 
   const fileId = response.data.id;
