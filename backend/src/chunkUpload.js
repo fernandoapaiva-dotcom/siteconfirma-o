@@ -19,6 +19,26 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000).unref();
 
+// Remove pastas de chunks órfãs (upload abandonado: app fechado antes de enviar todos os pedaços)
+// mais antigas que 12 horas, a cada 1 hora, para não acumular lixo em disco indefinidamente.
+setInterval(() => {
+  try {
+    if (!fs.existsSync(TEMP_DIR)) return;
+    const maxAgeMs = 12 * 60 * 60 * 1000;
+    const now = Date.now();
+    for (const entry of fs.readdirSync(TEMP_DIR, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dirPath = path.join(TEMP_DIR, entry.name);
+      try {
+        const stat = fs.statSync(dirPath);
+        if (now - stat.mtimeMs > maxAgeMs) {
+          fs.rmSync(dirPath, { recursive: true, force: true });
+        }
+      } catch (e) {}
+    }
+  } catch (e) {}
+}, 60 * 60 * 1000).unref();
+
 /**
  * Função centralizada e segura de montagem de chunks e envio ao Google Drive
  */

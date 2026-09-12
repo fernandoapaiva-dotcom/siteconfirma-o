@@ -180,9 +180,21 @@ async function uploadViaBackgroundFetch(files, guestName, { onProgress, onSucces
   });
 
   try {
+    // navigator.serviceWorker.ready já deve estar resolvido nesse ponto (o SW é
+    // registrado no carregamento da página, bem antes do usuário tocar em enviar),
+    // então isso não deveria consumir a janela de ativação transitória do usuário.
     const swReg = await navigator.serviceWorker.ready;
 
-    // Salva o manifesto no cache para o Service Worker consultar
+    // Chama backgroundFetch.fetch() o quanto antes, ainda dentro do gesto do usuário.
+    // Qualquer outra coisa assíncrona antes disso arrisca deixar o Chrome rejeitar a
+    // chamada por "falta de user activation".
+    const bgFetch = await swReg.backgroundFetch.fetch(bgFetchId, allRequests, {
+      title: `Enviando ${totalFiles} mídia${totalFiles > 1 ? "s" : ""} do batizado...`,
+      downloadTotal: 1024 * 1024,
+    });
+
+    // Salva o manifesto no cache para o Service Worker consultar (não é urgente,
+    // só precisa estar pronto quando o backgroundfetchsuccess disparar no SW).
     try {
       const manifestCache = await caches.open("upload-manifest");
       await manifestCache.put(
@@ -190,11 +202,6 @@ async function uploadViaBackgroundFetch(files, guestName, { onProgress, onSucces
         new Response(JSON.stringify(uploadManifest))
       );
     } catch (e) {}
-
-    const bgFetch = await swReg.backgroundFetch.fetch(bgFetchId, allRequests, {
-      title: `Enviando ${totalFiles} mídia${totalFiles > 1 ? "s" : ""} do batizado...`,
-      downloadTotal: 1024 * 1024,
-    });
 
     localStorage.setItem(
       "analu_bg_upload",
@@ -496,7 +503,26 @@ export async function startResilientUpload(files, guestName, callbacks) {
 
   const { onProgress } = callbacks;
 
-  // 1. Otimiza imagens localmente (Canvas na main thread)
+  // 1. Tenta Background Fetch API nativo IMEDIATAMENTE, ainda dentro da janela de
+  //    "ativação transitória do usuário" aberta pelo toque no botão de enviar.
+  //    O Chrome só permite backgroundFetch.fetch() por poucos segundos após o gesto
+  //    do usuário — se a gente comprimir imagens/vídeos (operação assíncrona, pode
+  //    levar vários segundos com várias mídias) antes de chamar isso, essa janela
+  //    expira e o Chrome rejeita a chamada silenciosamente, caindo sempre no fallback.
+  const bgFetchSupported = await supportsBackgroundFetch();
+
+  if (bgFetchSupported) {
+    console.log("[Uploader] ✅ Background Fetch API disponível!");
+    try {
+      await uploadViaBackgroundFetch(files, guestName, callbacks);
+      return;
+    } catch (err) {
+      console.warn("[Uploader] Background Fetch falhou (ou o gesto do usuário expirou), acionando pipeline concorrente:", err.message);
+    }
+  }
+
+  // 2. Fallback: aqui sim vale comprimir localmente, já que essa via depende da aba
+  //    continuar rodando e cada byte a menos ajuda a terminar mais rápido.
   const processedFiles = [];
   for (let i = 0; i < files.length; i++) {
     onProgress({
@@ -508,19 +534,6 @@ export async function startResilientUpload(files, guestName, callbacks) {
       progress: Math.round((i / files.length) * 6),
     });
     processedFiles.push(await compressImage(files[i]));
-  }
-
-  // 2. Tenta Background Fetch API nativo
-  const bgFetchSupported = await supportsBackgroundFetch();
-
-  if (bgFetchSupported) {
-    console.log("[Uploader] ✅ Background Fetch API disponível!");
-    try {
-      await uploadViaBackgroundFetch(processedFiles, guestName, callbacks);
-      return;
-    } catch (err) {
-      console.warn("[Uploader] Background Fetch falhou, acionando pipeline concorrente:", err.message);
-    }
   }
 
   // 3. Pipeline acelerado com retomada automática
