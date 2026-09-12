@@ -95,17 +95,30 @@ export async function compressImage(file) {
 }
 
 /**
- * Verifica se o navegador suporta Background Fetch com timeout estrito de 1.5s
- * para nunca bloquear a inicialização caso o Service Worker demore a responder.
+ * Verifica se o navegador suporta Background Fetch. Na primeira visita (comum no
+ * dia do evento, com muitos convidados abrindo o link pela primeira vez), o Service
+ * Worker pode ainda estar instalando/ativando quando o usuário toca em enviar — por
+ * isso primeiro checamos "controller" (instantâneo, sem esperar nada, quando o SW já
+ * está no controle da página) e só depois esperamos "ready" com uma folga generosa
+ * (4s) antes de desistir e cair no modo de compatibilidade.
  */
 async function supportsBackgroundFetch() {
   if (!("serviceWorker" in navigator) || !("BackgroundFetchManager" in window)) {
     return false;
   }
+  if (navigator.serviceWorker.controller) {
+    // SW já está ativo e no controle desta página — sem necessidade de esperar nada.
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      return !!(reg && "backgroundFetch" in reg);
+    } catch (e) {
+      return false;
+    }
+  }
   try {
     const regPromise = navigator.serviceWorker.ready;
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("timeout")), 1500)
+      setTimeout(() => reject(new Error("timeout")), 4000)
     );
     const reg = await Promise.race([regPromise, timeoutPromise]);
     return !!(reg && "backgroundFetch" in reg);
