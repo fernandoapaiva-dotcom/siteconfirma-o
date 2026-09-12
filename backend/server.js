@@ -331,6 +331,31 @@ app.delete("/api/gallery/:id", requireAdmin, (req, res) => {
   }
 });
 
+// Exclusão em lote (ex: todas as fotos de um autor de uma vez) — feita num único
+// ciclo de leitura/escrita para não correr risco de race condition entre deletes paralelos.
+app.delete("/api/gallery", requireAdmin, (req, res) => {
+  try {
+    const { ids } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "Informe a lista de ids para excluir." });
+    }
+    const galleryDbPath = path.resolve("./data/gallery.json");
+    let deleted = 0;
+    if (fs.existsSync(galleryDbPath)) {
+      let photos = JSON.parse(fs.readFileSync(galleryDbPath, "utf8"));
+      const idSet = new Set(ids);
+      const before = photos.length;
+      photos = photos.filter((p) => !idSet.has(p.id));
+      deleted = before - photos.length;
+      fs.writeFileSync(galleryDbPath, JSON.stringify(photos, null, 2));
+    }
+    res.json({ ok: true, deleted });
+  } catch (err) {
+    console.error("Erro ao deletar fotos em lote:", err);
+    res.status(500).json({ error: "Falha ao deletar as fotos." });
+  }
+});
+
 // A exclusão de RSVP no Sheets é complexa, então para o modo JSON vamos apenas remover do arquivo local
 app.delete("/api/rsvp/:timestamp", requireAdmin, (req, res) => {
   try {

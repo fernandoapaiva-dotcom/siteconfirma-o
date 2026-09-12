@@ -131,6 +131,17 @@ export default function AdminPage() {
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [filtro, setFiltro] = useState("Todos");
+  const [busca, setBusca] = useState("");
+  const [expandedMsgs, setExpandedMsgs] = useState(() => new Set());
+
+  function toggleMsgExpanded(key) {
+    setExpandedMsgs((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   async function carregar(pw) {
     setCarregando(true);
@@ -237,15 +248,26 @@ export default function AdminPage() {
     );
   }
 
+  const buscaNormalizada = busca.trim().toLowerCase();
+
   const confirmacoesFiltradas = (dados?.confirmacoes || []).filter((c) => {
-    if (filtro === "Todos") return true;
-    if (filtro === "Vão ao Almoço") {
-      return c.presenca === "Cerimônia e Almoço" || c.presenca === "Apenas ao Almoço";
+    if (filtro === "Todos") {
+      // segue adiante
+    } else if (filtro === "Vão ao Almoço") {
+      if (!(c.presenca === "Cerimônia e Almoço" || c.presenca === "Apenas ao Almoço")) return false;
+    } else if (filtro === "Vão à Cerimônia") {
+      if (!(c.presenca === "Cerimônia e Almoço" || c.presenca === "Apenas à Cerimônia")) return false;
+    } else if (c.presenca !== filtro) {
+      return false;
     }
-    if (filtro === "Vão à Cerimônia") {
-      return c.presenca === "Cerimônia e Almoço" || c.presenca === "Apenas à Cerimônia";
+
+    if (buscaNormalizada) {
+      const nomeMatch = (c.nome || "").toLowerCase().includes(buscaNormalizada);
+      const acompMatch = (c.acompanhantes || "").toLowerCase().includes(buscaNormalizada);
+      if (!nomeMatch && !acompMatch) return false;
     }
-    return c.presenca === filtro;
+
+    return true;
   });
 
   const totalFiltrado = confirmacoesFiltradas.reduce((soma, c) => {
@@ -282,6 +304,14 @@ export default function AdminPage() {
             </select>
           </div>
 
+          <input
+            type="text"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por nome..."
+            style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--line)", background: "white", color: "var(--ink)", fontFamily: "var(--font-body)", minWidth: "180px" }}
+          />
+
           <button className="btn-primary" onClick={baixarPdf} style={{ margin: 0 }}>
             Exportar lista em PDF
           </button>
@@ -295,54 +325,94 @@ export default function AdminPage() {
           )}
         </div>
 
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>Nome</th>
-              <th>Acompanhantes</th>
-              <th>Presença</th>
-              <th>Mensagem</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {confirmacoesFiltradas.map((c, i) => {
-              const acompList = parseCompanions(c.acompanhantes);
-              const mainGuestNumber = sequentialNumber++;
-              const countOnly = parseInt(c.acompanhantes, 10) || 0;
+        <div style={{ maxHeight: "62vh", overflowY: "auto", border: "1px solid var(--line)", borderRadius: "10px" }}>
+          <table className="admin-table" style={{ marginBottom: 0 }}>
+            <thead>
+              <tr>
+                <th style={{ position: "sticky", top: 0, background: "var(--paper, #fdf8ee)", zIndex: 1 }}>Nome</th>
+                <th style={{ position: "sticky", top: 0, background: "var(--paper, #fdf8ee)", zIndex: 1 }}>Acompanhantes</th>
+                <th style={{ position: "sticky", top: 0, background: "var(--paper, #fdf8ee)", zIndex: 1 }}>Presença</th>
+                <th style={{ position: "sticky", top: 0, background: "var(--paper, #fdf8ee)", zIndex: 1 }}>Mensagem</th>
+                <th style={{ position: "sticky", top: 0, background: "var(--paper, #fdf8ee)", zIndex: 1 }}>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {confirmacoesFiltradas.map((c, i) => {
+                const acompList = parseCompanions(c.acompanhantes);
+                const mainGuestNumber = sequentialNumber++;
+                const countOnly = parseInt(c.acompanhantes, 10) || 0;
+                const msgKey = c.data || i;
+                const msg = c.mensagem || "";
+                const isLongMsg = msg.length > 60;
+                const isExpanded = expandedMsgs.has(msgKey);
 
-              return (
-                <Fragment key={i}>
-                  <tr>
-                    <td style={{ fontWeight: "600" }}>{mainGuestNumber} - {c.nome}</td>
-                    <td>{countOnly > 0 ? countOnly : "0"}</td>
-                    <td>{c.presenca}</td>
-                    <td>{c.mensagem}</td>
-                    <td>
-                      <button onClick={() => handleDeleteRsvp(c.data)} style={{ background: "red", color: "white", padding: "4px 8px", borderRadius: "4px", border: "none", cursor: "pointer", fontSize: "0.75rem" }}>
-                        Excluir
-                      </button>
-                    </td>
-                  </tr>
-                  {acompList.map((compName, idx) => {
-                    const compNumber = sequentialNumber++;
-                    return (
-                      <tr key={`comp-${i}-${idx}`} style={{ backgroundColor: "rgba(95, 110, 82, 0.03)" }}>
-                        <td style={{ paddingLeft: "30px", fontStyle: "italic", color: "var(--sage-deep)" }}>
-                          &nbsp;&nbsp;&nbsp;&nbsp;{compNumber} - {compName}
-                        </td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                      </tr>
-                    );
-                  })}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+                return (
+                  <Fragment key={i}>
+                    <tr>
+                      <td style={{ fontWeight: "600" }}>{mainGuestNumber} - {c.nome}</td>
+                      <td>{countOnly > 0 ? countOnly : "0"}</td>
+                      <td>{c.presenca}</td>
+                      <td style={{ maxWidth: "260px" }}>
+                        {isLongMsg && !isExpanded ? (
+                          <>
+                            {msg.slice(0, 60)}…{" "}
+                            <button
+                              onClick={() => toggleMsgExpanded(msgKey)}
+                              style={{ background: "none", border: "none", color: "var(--gold-deep)", cursor: "pointer", fontSize: "0.75rem", padding: 0, textDecoration: "underline" }}
+                            >
+                              ver mais
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {msg}
+                            {isLongMsg && (
+                              <>
+                                {" "}
+                                <button
+                                  onClick={() => toggleMsgExpanded(msgKey)}
+                                  style={{ background: "none", border: "none", color: "var(--gold-deep)", cursor: "pointer", fontSize: "0.75rem", padding: 0, textDecoration: "underline" }}
+                                >
+                                  ver menos
+                                </button>
+                              </>
+                            )}
+                          </>
+                        )}
+                      </td>
+                      <td>
+                        <button onClick={() => handleDeleteRsvp(c.data)} style={{ background: "red", color: "white", padding: "4px 8px", borderRadius: "4px", border: "none", cursor: "pointer", fontSize: "0.75rem" }}>
+                          Excluir
+                        </button>
+                      </td>
+                    </tr>
+                    {acompList.map((compName, idx) => {
+                      const compNumber = sequentialNumber++;
+                      return (
+                        <tr key={`comp-${i}-${idx}`} style={{ backgroundColor: "rgba(95, 110, 82, 0.03)" }}>
+                          <td style={{ paddingLeft: "30px", fontStyle: "italic", color: "var(--sage-deep)" }}>
+                            &nbsp;&nbsp;&nbsp;&nbsp;{compNumber} - {compName}
+                          </td>
+                          <td></td>
+                          <td></td>
+                          <td></td>
+                          <td></td>
+                        </tr>
+                      );
+                    })}
+                  </Fragment>
+                );
+              })}
+              {confirmacoesFiltradas.length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: "center", color: "gray", padding: "20px" }}>
+                    Nenhuma confirmação encontrada para esse filtro/busca.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       {/* Seção de Contas do Drive */}
@@ -356,6 +426,9 @@ export default function AdminPage() {
 
 function GalleryManager({ senha }) {
   const [photos, setPhotos] = useState([]);
+  const [selected, setSelected] = useState(() => new Set());
+  const [busy, setBusy] = useState(false);
+  const [collapsedAuthors, setCollapsedAuthors] = useState(() => new Set());
 
   async function loadPhotos() {
     try {
@@ -387,42 +460,222 @@ function GalleryManager({ senha }) {
     }
   }
 
-  async function deletePhoto(id) {
-    if (!window.confirm("Excluir esta foto da galeria do site? (Ela continuará salva no Google Drive)")) return;
+  function toggleSelected(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAuthorGroup(authorPhotos) {
+    const ids = authorPhotos.map((p) => p.id);
+    const allSelected = ids.every((id) => selected.has(id));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  }
+
+  function toggleCollapsed(author) {
+    setCollapsedAuthors((prev) => {
+      const next = new Set(prev);
+      if (next.has(author)) next.delete(author);
+      else next.add(author);
+      return next;
+    });
+  }
+
+  async function deleteIds(ids, confirmMsg) {
+    if (ids.length === 0) return;
+    if (!window.confirm(confirmMsg)) return;
+    setBusy(true);
     try {
-      const res = await fetch(`/api/gallery/${id}`, {
+      const res = await fetch("/api/gallery", {
         method: "DELETE",
-        headers: { "X-Admin-Password": senha },
+        headers: { "X-Admin-Password": senha, "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
       });
       if (res.ok) {
-        loadPhotos();
+        setSelected((prev) => {
+          const next = new Set(prev);
+          ids.forEach((id) => next.delete(id));
+          return next;
+        });
+        await loadPhotos();
+      } else {
+        alert("Erro ao excluir.");
       }
     } catch (e) {
-      console.error(e);
+      alert("Erro na requisição.");
+    } finally {
+      setBusy(false);
     }
   }
+
+  const groups = {};
+  for (const p of photos) {
+    const key = p.uploaderName || "Convidado";
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(p);
+  }
+  const authors = Object.keys(groups).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   return (
     <section className="section" style={{ marginTop: "40px" }}>
       <h2 className="section-title">Gerenciar Galeria de Fotos</h2>
-      <p className="section-subtitle">Exclua fotos indesejadas do site.</p>
-      
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: "12px", marginTop: "20px" }}>
-        {photos.map(p => (
-          <div key={p.id} style={{ position: "relative", border: "1px solid var(--line)", borderRadius: "8px", padding: "8px", textAlign: "center", opacity: p.hidden ? 0.5 : 1 }}>
-            {p.mimeType?.startsWith("video") ? (
-              <video src={p.fileUrl} style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px" }} muted />
-            ) : (
-              <img src={p.thumbnailUrl || p.fileUrl} style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px" }} alt="" />
+      <p className="section-subtitle">
+        Agrupado por quem enviou. Marque fotos individuais ou selecione todas de um autor para excluir de uma vez.
+      </p>
+
+      {photos.length === 0 ? (
+        <p>Nenhuma foto enviada ainda.</p>
+      ) : (
+        <>
+          <div
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 2,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              flexWrap: "wrap",
+              background: "var(--paper, #fdf8ee)",
+              border: "1px solid var(--line)",
+              borderRadius: "10px",
+              padding: "10px 14px",
+              margin: "16px 0",
+            }}
+          >
+            <span style={{ fontSize: "0.85rem", fontWeight: "600", color: "var(--ink)" }}>
+              {selected.size > 0
+                ? `${selected.size} mídia${selected.size > 1 ? "s" : ""} selecionada${selected.size > 1 ? "s" : ""}`
+                : `${photos.length} mídia(s) no total, de ${authors.length} autor(es)`}
+            </span>
+            {selected.size > 0 && (
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  onClick={() => setSelected(new Set())}
+                  disabled={busy}
+                  style={{ background: "transparent", border: "1px solid var(--line)", color: "var(--ink)", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "0.8rem" }}
+                >
+                  Limpar seleção
+                </button>
+                <button
+                  onClick={() =>
+                    deleteIds(
+                      Array.from(selected),
+                      `Excluir ${selected.size} mídia(s) selecionada(s) da galeria do site? (Continuam salvas no Google Drive)`
+                    )
+                  }
+                  disabled={busy}
+                  style={{ background: "red", color: "white", border: "none", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "0.8rem", fontWeight: "600" }}
+                >
+                  {busy ? "Excluindo..." : `Excluir selecionadas (${selected.size})`}
+                </button>
+              </div>
             )}
-            <p style={{ fontSize: "0.75rem", margin: "4px 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.uploaderName}</p>
-            <button onClick={() => deletePhoto(p.id)} style={{ width: "100%", padding: "4px", background: "red", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem" }}>
-              Excluir
-            </button>
           </div>
-        ))}
-        {photos.length === 0 && <p>Nenhuma foto enviada ainda.</p>}
-      </div>
+
+          {authors.map((author) => {
+            const authorPhotos = groups[author];
+            const ids = authorPhotos.map((p) => p.id);
+            const allSelected = ids.every((id) => selected.has(id));
+            const someSelected = ids.some((id) => selected.has(id));
+            const isCollapsed = collapsedAuthors.has(author);
+
+            return (
+              <div key={author} style={{ border: "1px solid var(--line)", borderRadius: "10px", marginBottom: "16px", overflow: "hidden" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "10px 14px",
+                    background: "rgba(184, 147, 63, 0.08)",
+                    borderBottom: isCollapsed ? "none" : "1px solid var(--line)",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected; }}
+                    onChange={() => toggleAuthorGroup(authorPhotos)}
+                    title="Selecionar todas deste autor"
+                    style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                  />
+                  <button
+                    onClick={() => toggleCollapsed(author)}
+                    style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", flex: 1, textAlign: "left", padding: 0 }}
+                  >
+                    <strong style={{ color: "var(--ink)", fontFamily: "var(--font-display)" }}>{author}</strong>
+                    <span style={{ fontSize: "0.78rem", color: "var(--sage-deep)" }}>
+                      ({authorPhotos.length} {authorPhotos.length === 1 ? "mídia" : "mídias"}) {isCollapsed ? "▸" : "▾"}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => deleteIds(ids, `Excluir todas as ${ids.length} mídias de ${author}? (Continuam salvas no Google Drive)`)}
+                    disabled={busy}
+                    style={{ background: "red", color: "white", border: "none", padding: "5px 10px", borderRadius: "6px", cursor: "pointer", fontSize: "0.75rem" }}
+                  >
+                    Excluir todas
+                  </button>
+                </div>
+
+                {!isCollapsed && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: "12px", padding: "14px" }}>
+                    {authorPhotos.map((p) => (
+                      <div
+                        key={p.id}
+                        style={{
+                          position: "relative",
+                          border: selected.has(p.id) ? "2px solid var(--gold-deep)" : "1px solid var(--line)",
+                          borderRadius: "8px",
+                          padding: "8px",
+                          textAlign: "center",
+                          opacity: p.hidden ? 0.5 : 1,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected.has(p.id)}
+                          onChange={() => toggleSelected(p.id)}
+                          style={{ position: "absolute", top: "10px", left: "10px", width: "18px", height: "18px", cursor: "pointer", zIndex: 1 }}
+                        />
+                        {p.mimeType?.startsWith("video") ? (
+                          <video src={p.fileUrl} style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px" }} muted />
+                        ) : (
+                          <img src={p.thumbnailUrl || p.fileUrl} style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px" }} alt="" />
+                        )}
+                        <div style={{ display: "flex", gap: "4px", marginTop: "6px" }}>
+                          <button
+                            onClick={() => toggleVisibility(p.id, p.hidden)}
+                            title={p.hidden ? "Reexibir no site" : "Ocultar do site"}
+                            style={{ flex: 1, padding: "4px", background: "var(--sage-deep)", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "0.7rem" }}
+                          >
+                            {p.hidden ? "Mostrar" : "Ocultar"}
+                          </button>
+                          <button
+                            onClick={() => deleteIds([p.id], "Excluir esta foto da galeria do site? (Ela continuará salva no Google Drive)")}
+                            disabled={busy}
+                            style={{ flex: 1, padding: "4px", background: "red", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "0.7rem" }}
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </>
+      )}
     </section>
   );
 }
