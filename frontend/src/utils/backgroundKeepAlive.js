@@ -49,7 +49,11 @@ class BackgroundKeepAlive {
           audio.style.height = "1px";
           audio.style.bottom = "0";
           audio.loop = true;
-          audio.src = "/audio/silent.mp3";
+          // Faixa de 30s (em vez de uma antiga de ~0.3s) — um loop reiniciando
+          // 3x por segundo tende a não ser reconhecido pelo Android/Chrome como
+          // reprodução contínua de verdade, o que derruba a permissão de segundo
+          // plano bem mais rápido do que uma faixa longa reiniciando raramente.
+          audio.src = "/audio/silent.wav";
           document.body.appendChild(audio);
         }
         this.audioEl = audio;
