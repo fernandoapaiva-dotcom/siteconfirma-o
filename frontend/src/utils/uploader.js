@@ -19,6 +19,13 @@ const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB por chunk
 const DIRECT_UPLOAD_LIMIT = 8 * 1024 * 1024; // Arquivos menores que 8MB vão direto (super rápido)
 const BC_CHANNEL_NAME = "analu-upload-channel";
 
+// Kill-switch de emergência: em produção (12/09/2026), Background Fetch travou de
+// forma reprodutível em envios com vários arquivos/chunks — o registro nativo parava
+// de progredir e nunca mais recuperava, sem erro nem forma de recuperação automática.
+// Desligado até investigar com calma depois do evento; o pipeline de fallback abaixo
+// é o que efetivamente entrega as mídias enquanto isso.
+const BACKGROUND_FETCH_ENABLED = false;
+
 /**
  * Comprime imagens no navegador preservando alta qualidade visual.
  */
@@ -522,7 +529,7 @@ export async function startResilientUpload(files, guestName, callbacks) {
   //    do usuário — se a gente comprimir imagens/vídeos (operação assíncrona, pode
   //    levar vários segundos com várias mídias) antes de chamar isso, essa janela
   //    expira e o Chrome rejeita a chamada silenciosamente, caindo sempre no fallback.
-  const bgFetchSupported = await supportsBackgroundFetch();
+  const bgFetchSupported = BACKGROUND_FETCH_ENABLED && (await supportsBackgroundFetch());
 
   if (bgFetchSupported) {
     console.log("[Uploader] ✅ Background Fetch API disponível!");
