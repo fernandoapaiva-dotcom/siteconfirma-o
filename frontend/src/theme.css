@@ -861,49 +861,35 @@ textarea {
   white-space: nowrap;
 }
 
-.uploader-media-tabs {
-  display: flex;
-  gap: 6px;
-  padding: 10px 12px 0;
+/* Tira de miniaturas: fotos à esquerda, vídeos à direita, com uma divisória
+   visual entre os dois grupos (só aparece quando a pessoa mandou os dois). */
+.carousel-thumbs-wrap {
   background: #faf8f4;
 }
 
-.uploader-media-tab {
+.carousel-thumbs-labels {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 14px 0;
+}
+
+.carousel-thumbs-labels span {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  border-radius: 18px;
-  border: 1px solid var(--line);
-  background: white;
-  color: var(--sage-deep);
-  font-family: var(--font-body);
-  font-weight: 600;
-  font-size: 0.76rem;
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
-}
-
-.uploader-media-tab:active {
-  transform: scale(0.96);
-}
-
-.uploader-media-tab.active {
-  background: var(--gold);
-  border-color: var(--gold-deep);
-  color: white;
-}
-
-.uploader-media-tab-count {
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 9px;
-  padding: 0 6px;
+  gap: 4px;
   font-size: 0.68rem;
   font-weight: 700;
+  color: var(--sage-deep);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
-.uploader-media-tab.active .uploader-media-tab-count {
-  background: rgba(255, 255, 255, 0.28);
+.carousel-thumb-divider {
+  flex-shrink: 0;
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+  margin: 4px 2px;
 }
 
 /* Palco principal do carrossel: fluido, acompanha a largura do card em

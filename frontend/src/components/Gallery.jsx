@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 
 function driveThumb(fileId, size) {
@@ -55,7 +55,7 @@ function VideoIcon() {
  * Carrossel de mídia de um único convidado, já filtrado por tipo (fotos OU vídeos).
  * Troca de slide com um fade suave em vez de um corte seco.
  */
-function MediaCarousel({ uploader, items, onOpenLightbox }) {
+function MediaCarousel({ uploader, items, dividerIndex = -1, onOpenLightbox }) {
   const [current, setCurrent] = useState(0);
   const thumbsRef = useRef(null);
 
@@ -127,24 +127,34 @@ function MediaCarousel({ uploader, items, onOpenLightbox }) {
       </div>
 
       {items.length > 1 && (
-        <div ref={thumbsRef} className="carousel-thumbs">
-          {items.map((p, i) => {
-            const isVid = p.mimeType && p.mimeType.startsWith("video");
-            return (
-              <div
-                key={p.id}
-                onClick={(e) => { e.stopPropagation(); goTo(i); }}
-                className={`carousel-thumb ${i === current ? "active" : ""}`}
-              >
-                {isVid ? (
-                  <video src={"/api/video/" + p.id + "#t=0.5"} preload="metadata" playsInline muted />
-                ) : (
-                  <img src={driveThumb(p.id, 100)} alt="" />
-                )}
-                {isVid && <div className="carousel-thumb-play"><PlayIcon size={12} /></div>}
-              </div>
-            );
-          })}
+        <div className="carousel-thumbs-wrap">
+          {dividerIndex > 0 && (
+            <div className="carousel-thumbs-labels">
+              <span><CameraIcon /> Fotos</span>
+              <span><VideoIcon /> Vídeos</span>
+            </div>
+          )}
+          <div ref={thumbsRef} className="carousel-thumbs">
+            {items.map((p, i) => {
+              const isVid = p.mimeType && p.mimeType.startsWith("video");
+              return (
+                <Fragment key={p.id}>
+                  {i === dividerIndex && <div className="carousel-thumb-divider" />}
+                  <div
+                    onClick={(e) => { e.stopPropagation(); goTo(i); }}
+                    className={`carousel-thumb ${i === current ? "active" : ""}`}
+                  >
+                    {isVid ? (
+                      <video src={"/api/video/" + p.id + "#t=0.5"} preload="metadata" playsInline muted />
+                    ) : (
+                      <img src={driveThumb(p.id, 100)} alt="" />
+                    )}
+                    {isVid && <div className="carousel-thumb-play"><PlayIcon size={12} /></div>}
+                  </div>
+                </Fragment>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -163,14 +173,14 @@ function MediaCarousel({ uploader, items, onOpenLightbox }) {
 }
 
 /**
- * Card de um convidado: nome, contagem total e abas Fotos/Vídeos (só aparecem
- * quando a pessoa mandou os dois tipos) que trocam qual carrossel é exibido.
+ * Card de um convidado: nome, contagem total e um único carrossel com fotos
+ * e vídeos juntos — fotos primeiro (esquerda), vídeos depois (direita), com
+ * uma divisória visual na tira de miniaturas entre os dois grupos.
  */
 function UploaderCard({ uploader, photos, videos, onOpenLightbox }) {
-  const hasBoth = photos.length > 0 && videos.length > 0;
-  const [mediaType, setMediaType] = useState(photos.length > 0 ? "fotos" : "videos");
-  const items = mediaType === "fotos" ? photos : videos;
-  const total = photos.length + videos.length;
+  const items = [...photos, ...videos];
+  const total = items.length;
+  const dividerIndex = photos.length > 0 && videos.length > 0 ? photos.length : -1;
 
   return (
     <div className="uploader-card">
@@ -182,24 +192,7 @@ function UploaderCard({ uploader, photos, videos, onOpenLightbox }) {
         <span className="uploader-total-badge">{total} {total === 1 ? "arquivo" : "arquivos"}</span>
       </div>
 
-      {hasBoth && (
-        <div className="uploader-media-tabs">
-          <button
-            className={`uploader-media-tab ${mediaType === "fotos" ? "active" : ""}`}
-            onClick={() => setMediaType("fotos")}
-          >
-            <CameraIcon /> Fotos <span className="uploader-media-tab-count">{photos.length}</span>
-          </button>
-          <button
-            className={`uploader-media-tab ${mediaType === "videos" ? "active" : ""}`}
-            onClick={() => setMediaType("videos")}
-          >
-            <VideoIcon /> Vídeos <span className="uploader-media-tab-count">{videos.length}</span>
-          </button>
-        </div>
-      )}
-
-      <MediaCarousel uploader={uploader} items={items} onOpenLightbox={onOpenLightbox} />
+      <MediaCarousel uploader={uploader} items={items} dividerIndex={dividerIndex} onOpenLightbox={onOpenLightbox} />
     </div>
   );
 }
