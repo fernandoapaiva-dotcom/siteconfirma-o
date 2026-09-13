@@ -342,12 +342,13 @@ function FeaturedCard({ photos, videos, onOpenLightbox }) {
   if (total === 0) return null;
 
   return (
-    <div className="uploader-card featured-card">
-      <div className="uploader-card-header">
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <div className="uploader-avatar featured-avatar">★</div>
-          <span className="uploader-name">Melhores Momentos</span>
-        </div>
+    <div className="featured-showcase">
+      <div className="featured-showcase-header">
+        <span className="featured-showcase-kicker">✨ Em destaque ✨</span>
+        <h2 className="featured-showcase-title">Melhores Momentos</h2>
+        <p className="featured-showcase-subtitle">
+          Os cliques mais especiais do Batizado da Analu, escolhidos a dedo pela família
+        </p>
         <span className="uploader-total-badge">{total} {total === 1 ? "arquivo" : "arquivos"}</span>
       </div>
 
@@ -544,6 +545,16 @@ export default function Gallery({ refreshTrigger }) {
 
   return (
     <>
+      {!loading && !error && (featuredPhotos.length + featuredVideos.length) > 0 && (
+        <div style={{ marginTop: "24px" }}>
+          <FeaturedCard
+            photos={featuredPhotos}
+            videos={featuredVideos}
+            onOpenLightbox={(items, idx) => setLightbox({ items, index: idx })}
+          />
+        </div>
+      )}
+
       <div className="section" style={{ marginTop: "24px" }}>
         <h2 className="section-title">Galeria de Fotos</h2>
         <p className="section-subtitle">Momentos eternizados</p>
@@ -554,11 +565,6 @@ export default function Gallery({ refreshTrigger }) {
           <p style={{ textAlign: "center", color: "red" }}>{error}</p>
         ) : (
           <div style={{ marginTop: "20px" }}>
-            <FeaturedCard
-              photos={featuredPhotos}
-              videos={featuredVideos}
-              onOpenLightbox={(items, idx) => setLightbox({ items, index: idx })}
-            />
             {grouped.map((g) => (
               <UploaderCard
                 key={g.uploader}
