@@ -20,6 +20,7 @@ export default function App() {
     totalFiles: 0,
   });
   const [galleryRefresh, setGalleryRefresh] = useState(0);
+  const [failedUpload, setFailedUpload] = useState(null); // { files: File[], guestName }
 
   useEffect(() => {
     const hasSeen = localStorage.getItem("hasSeenTour_analu");
@@ -106,6 +107,7 @@ export default function App() {
 
   async function handleBackgroundUpload(arquivos, nome) {
     setActiveTab(null); // Fecha a modal imediatamente
+    setFailedUpload(null);
     setBackgroundUpload({
       active: true,
       progress: 2,
@@ -146,6 +148,8 @@ export default function App() {
           });
           setTimeout(() => setBackgroundUpload((prev) => ({ ...prev, active: false })), 6000);
         } else {
+          const failedFiles = failures.map((f) => f.fileRef).filter(Boolean);
+          setFailedUpload(failedFiles.length > 0 ? { files: failedFiles, guestName: nome } : null);
           setBackgroundUpload({
             active: true,
             progress: 100,
@@ -154,10 +158,11 @@ export default function App() {
             currentFile: total,
             totalFiles: total,
           });
-          setTimeout(() => setBackgroundUpload((prev) => ({ ...prev, active: false })), 8000);
+          // Não fecha sozinho quando há falha — fica visível até a pessoa tentar de novo ou fechar.
         }
       },
       onError: (err) => {
+        setFailedUpload({ files: arquivos, guestName: nome });
         setBackgroundUpload({
           active: true,
           progress: 0,
@@ -166,9 +171,15 @@ export default function App() {
           currentFile: 0,
           totalFiles: arquivos.length,
         });
-        setTimeout(() => setBackgroundUpload((prev) => ({ ...prev, active: false })), 7000);
+        // Não fecha sozinho quando há falha — fica visível até a pessoa tentar de novo ou fechar.
       },
     });
+  }
+
+  function handleRetryFailed() {
+    if (!failedUpload || failedUpload.files.length === 0) return;
+    const { files, guestName } = failedUpload;
+    handleBackgroundUpload(files, guestName);
   }
 
   const handleFinishTour = () => {
@@ -395,6 +406,16 @@ export default function App() {
                 <p style={{ margin: "0 0 8px", fontSize: "0.78rem", color: "#991b1b" }}>
                   {backgroundUpload.statusText || "Verifique sua internet e tente novamente."}
                 </p>
+              )}
+
+              {(backgroundUpload.phase === "partial" || backgroundUpload.phase === "error") && failedUpload && failedUpload.files.length > 0 && (
+                <button
+                  className="btn-primary"
+                  onClick={handleRetryFailed}
+                  style={{ margin: "4px 0 8px", padding: "6px 14px", fontSize: "0.8rem", width: "auto" }}
+                >
+                  Tentar enviar de novo ({failedUpload.files.length} {failedUpload.files.length === 1 ? "arquivo" : "arquivos"})
+                </button>
               )}
 
               {backgroundUpload.phase !== "error" && (

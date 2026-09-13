@@ -301,21 +301,48 @@ async function uploadViaBackgroundFetch(files, guestName, { onProgress, onSucces
 }
 
 /**
- * Envio direto de arquivo pequeno (< 8MB) em uma única requisição rápida
+ * Envio direto de arquivo pequeno (< 8MB) em uma única requisição rápida.
+ * Com retomada automática: uma falha passageira de rede (Wi-Fi do local
+ * instável, timeout, erro momentâneo do servidor) não pode custar o arquivo
+ * inteiro enquanto a pessoa está com a tela aberta esperando — por isso
+ * tenta de novo várias vezes antes de desistir.
  */
-async function uploadDirectFile(file, guestName) {
-  const formData = new FormData();
-  formData.append("fotos", file);
-  formData.append("nome", guestName || "Convidado");
+async function uploadDirectFile(file, guestName, { maxAttempts = 8, onRetry } = {}) {
+  let lastErr = null;
 
-  const res = await fetch("/api/upload", {
-    method: "POST",
-    body: formData,
-    signal: AbortSignal.timeout(30000),
-  });
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const formData = new FormData();
+      formData.append("fotos", file);
+      formData.append("nome", guestName || "Convidado");
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return await res.json();
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!res.ok) {
+        // Erros 4xx (arquivo inválido, etc.) não se resolvem tentando de novo.
+        if (res.status >= 400 && res.status < 500) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        throw new Error(`HTTP ${res.status} (tentativa ${attempt})`);
+      }
+
+      return await res.json();
+    } catch (err) {
+      lastErr = err;
+      const isClientError = /^HTTP 4\d\d$/.test(err.message);
+      if (isClientError || attempt === maxAttempts) throw err;
+
+      if (onRetry) onRetry(attempt, maxAttempts);
+      const waitMs = Math.min(800 * attempt, 5000);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+
+  throw lastErr;
 }
 
 /**
@@ -434,7 +461,18 @@ async function uploadViaFallback(files, guestName, { onProgress, onSuccess, onEr
         const isLargeVideo = file.size >= DIRECT_UPLOAD_LIMIT;
 
         if (!isLargeVideo) {
-          result = await uploadDirectFile(file, guestName);
+          result = await uploadDirectFile(file, guestName, {
+            onRetry: (attempt, maxAttempts) => {
+              onProgress({
+                phase: "sending",
+                statusText: `Conexão instável, tentando enviar ${file.name} de novo (${attempt}/${maxAttempts})...`,
+                currentFile: index + 1,
+                totalFiles,
+                currentFileName: file.name,
+                progress: state.calculateOverallProgress(0, false),
+              });
+            },
+          });
           state.addUploadedBytes(file.size);
         } else {
           // Arquivo grande: usa chunking com retry inteligente
@@ -457,7 +495,9 @@ async function uploadViaFallback(files, guestName, { onProgress, onSuccess, onEr
         successList.push({ file: file.name, result });
       } catch (err) {
         console.error(`[Uploader] Erro no arquivo ${file.name}:`, err);
-        failureList.push({ file: file.name, error: err.message });
+        // Guarda o File original (não só o nome) para permitir reenviar exatamente
+        // esse arquivo depois, sem precisar que a pessoa selecione tudo de novo.
+        failureList.push({ file: file.name, fileRef: file, error: err.message });
       }
     }
 
