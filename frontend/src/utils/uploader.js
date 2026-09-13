@@ -27,81 +27,6 @@ const BC_CHANNEL_NAME = "analu-upload-channel";
 const BACKGROUND_FETCH_ENABLED = false;
 
 /**
- * Comprime imagens no navegador preservando alta qualidade visual.
- */
-export async function compressImage(file) {
-  const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|m4v|3gp|webm|avi)$/i.test(file.name);
-  if (isVideo) return file;
-  if (file.size < 400 * 1024) return file;
-
-  try {
-    let sourceImage = null;
-
-    if (typeof createImageBitmap === "function") {
-      try {
-        sourceImage = await createImageBitmap(file);
-      } catch (e) {}
-    }
-
-    if (!sourceImage) {
-      sourceImage = await new Promise((resolve, reject) => {
-        const img = new Image();
-        const url = URL.createObjectURL(file);
-        img.onload = () => {
-          URL.revokeObjectURL(url);
-          resolve(img);
-        };
-        img.onerror = () => {
-          URL.revokeObjectURL(url);
-          reject(new Error("Erro ao carregar imagem"));
-        };
-        img.src = url;
-      });
-    }
-
-    const MAX_DIM = 2048;
-    let { width, height } = sourceImage;
-
-    if (width > MAX_DIM || height > MAX_DIM) {
-      if (width > height) {
-        height = Math.round((height * MAX_DIM) / width);
-        width = MAX_DIM;
-      } else {
-        width = Math.round((width * MAX_DIM) / height);
-        height = MAX_DIM;
-      }
-    }
-
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-
-    if (!ctx) {
-      if (sourceImage.close) sourceImage.close();
-      return file;
-    }
-
-    ctx.drawImage(sourceImage, 0, 0, width, height);
-    if (sourceImage.close) sourceImage.close();
-
-    const blob = await new Promise((resolve) => {
-      canvas.toBlob(resolve, "image/jpeg", 0.84);
-    });
-
-    if (blob && blob.size < file.size) {
-      const baseName = file.name.replace(/\.[^/.]+$/, "");
-      return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" });
-    }
-
-    return file;
-  } catch (err) {
-    console.warn("[Uploader] Falha na compressão local, enviando arquivo original:", err);
-    return file;
-  }
-}
-
-/**
  * Verifica se o navegador suporta Background Fetch. Na primeira visita (comum no
  * dia do evento, com muitos convidados abrindo o link pela primeira vez), o Service
  * Worker pode ainda estar instalando/ativando quando o usuário toca em enviar — por
@@ -581,9 +506,9 @@ export async function startResilientUpload(files, guestName, callbacks) {
     }
   }
 
-  // 2. Fallback: aqui sim vale comprimir localmente, já que essa via depende da aba
-  //    continuar rodando e cada byte a menos ajuda a terminar mais rápido.
-  const processedFiles = [];
+  // 2. Fallback: envia os arquivos exatamente como vieram do celular — sem
+  //    recomprimir. É um álbum de recordação, então qualidade da foto original
+  //    importa mais do que economizar alguns segundos de envio.
   for (let i = 0; i < files.length; i++) {
     onProgress({
       phase: "optimizing",
@@ -593,11 +518,10 @@ export async function startResilientUpload(files, guestName, callbacks) {
       currentFileName: files[i].name,
       progress: Math.round((i / files.length) * 6),
     });
-    processedFiles.push(await compressImage(files[i]));
   }
 
   // 3. Pipeline acelerado com retomada automática
-  await uploadViaFallback(processedFiles, guestName, callbacks);
+  await uploadViaFallback(files, guestName, callbacks);
 }
 
 /**

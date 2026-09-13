@@ -1,31 +1,19 @@
 import { Readable } from "node:stream";
 import fs from "node:fs";
 import path from "node:path";
-import sharp from "sharp";
 import { getAvailableDriveClient, isMockMode } from "./driveManager.js";
 
-const MAX_DIMENSION = 2000;
-const JPEG_QUALITY = 82;
 const MOCK_UPLOAD_DIR = path.resolve("./data/uploads");
 const GALLERY_DB_PATH = path.resolve("./data/gallery.json");
 const FOLDER_CACHE_PATH = path.resolve("./data/drive_folders.json");
 
+// Sobe o arquivo exatamente como veio do celular — é um álbum de
+// recordação, e reprocessar (redimensionar + recomprimir JPEG) perde
+// qualidade de verdade, mesmo que pareça sutil. Navegadores e o próprio
+// Google Drive já respeitam a orientação EXIF, então não precisa "corrigir"
+// rotação reescrevendo a imagem.
 async function normalizeImage(file) {
-  if (!file.mimetype.startsWith("image/")) {
-    return { buffer: file.buffer, mimeType: file.mimetype, name: file.originalname };
-  }
-  try {
-    const buffer = await sharp(file.buffer)
-      .rotate()
-      .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality: JPEG_QUALITY })
-      .toBuffer();
-    const nameSemExtensao = file.originalname.replace(/\.[^.]+$/, "");
-    return { buffer, mimeType: "image/jpeg", name: `${nameSemExtensao}.jpg` };
-  } catch (err) {
-    console.warn("Nao foi possivel redimensionar, enviando original:", err.message);
-    return { buffer: file.buffer, mimeType: file.mimetype, name: file.originalname };
-  }
+  return { buffer: file.buffer, mimeType: file.mimetype, name: file.originalname };
 }
 
 export function saveToGalleryDb(photoData) {
