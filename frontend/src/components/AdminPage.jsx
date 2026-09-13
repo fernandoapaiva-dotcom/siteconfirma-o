@@ -86,7 +86,7 @@ function DriveAccountsManager({ senha }) {
   }
 
   return (
-    <section className="section" style={{ marginTop: "32px", borderTop: "1px dashed var(--line)", paddingTop: "32px" }}>
+    <section className="section">
       <h2 className="section-title">Armazenamento: Contas do Google Drive</h2>
       <p className="section-subtitle">O sistema usará essas contas em formato de rodízio (Round-Robin) para fotos.</p>
 
@@ -135,6 +135,7 @@ export default function AdminPage() {
   const [filtro, setFiltro] = useState("Todos");
   const [busca, setBusca] = useState("");
   const [expandedMsgs, setExpandedMsgs] = useState(() => new Set());
+  const [adminTab, setAdminTab] = useState("confirmacoes"); // confirmacoes | contas | galeria
 
   function toggleMsgExpanded(key) {
     setExpandedMsgs((prev) => {
@@ -281,6 +282,28 @@ export default function AdminPage() {
 
   return (
     <div className="page">
+      <div className="admin-tabs">
+        <button
+          className={`admin-tab ${adminTab === "confirmacoes" ? "active" : ""}`}
+          onClick={() => setAdminTab("confirmacoes")}
+        >
+          📋 Confirmações
+        </button>
+        <button
+          className={`admin-tab ${adminTab === "contas" ? "active" : ""}`}
+          onClick={() => setAdminTab("contas")}
+        >
+          ⚙️ Contas / E-mail
+        </button>
+        <button
+          className={`admin-tab ${adminTab === "galeria" ? "active" : ""}`}
+          onClick={() => setAdminTab("galeria")}
+        >
+          🖼️ Galeria de Fotos
+        </button>
+      </div>
+
+      {adminTab === "confirmacoes" && (
       <section className="section">
         <h2 className="section-title">Confirmações — Batizado da Analu</h2>
         <p className="section-subtitle">
@@ -416,12 +439,11 @@ export default function AdminPage() {
           </table>
         </div>
       </section>
+      )}
 
-      {/* Seção de Contas do Drive */}
-      <DriveAccountsManager senha={senha} />
+      {adminTab === "contas" && <DriveAccountsManager senha={senha} />}
 
-      {/* Gerenciador de Galeria */}
-      <GalleryManager senha={senha} />
+      {adminTab === "galeria" && <GalleryManager senha={senha} />}
     </div>
   );
 }
@@ -690,7 +712,7 @@ function GalleryManager({ senha }) {
   const authors = Object.keys(groups).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   return (
-    <section className="section" style={{ marginTop: "40px" }}>
+    <section className="section">
       <h2 className="section-title">Gerenciar Galeria de Fotos</h2>
       <p className="section-subtitle">
         Agrupado por quem enviou. Marque fotos individuais ou selecione todas de um autor para excluir de uma vez.

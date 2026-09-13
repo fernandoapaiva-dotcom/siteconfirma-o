@@ -383,6 +383,52 @@ textarea {
   background: var(--sage-deep) !important;
 }
 
+/* Abas do painel admin: Confirmações / Contas / Galeria */
+.admin-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 20px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--cream, #fdf8ee);
+  padding: 10px 0;
+}
+
+.admin-tab {
+  flex: 1 1 auto;
+  min-width: 140px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--sage-deep);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.admin-tab:active {
+  transform: scale(0.97);
+}
+
+.admin-tab.active {
+  background: var(--gold);
+  border-color: var(--gold-deep);
+  color: white;
+  box-shadow: 0 3px 10px rgba(184, 147, 63, 0.35);
+}
+
+@media (max-width: 480px) {
+  .admin-tab {
+    min-width: 100%;
+  }
+}
+
 .admin-table {
   width: 100%;
   border-collapse: collapse;
