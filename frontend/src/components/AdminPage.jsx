@@ -460,6 +460,21 @@ function GalleryManager({ senha }) {
     }
   }
 
+  async function toggleFeatured(id, currentFeatured) {
+    try {
+      const res = await fetch(`/api/gallery/${id}/featured`, {
+        method: "PATCH",
+        headers: { "X-Admin-Password": senha, "Content-Type": "application/json" },
+        body: JSON.stringify({ featured: !currentFeatured })
+      });
+      if (res.ok) {
+        loadPhotos();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   function toggleSelected(id) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -646,10 +661,28 @@ function GalleryManager({ senha }) {
                           onChange={() => toggleSelected(p.id)}
                           style={{ position: "absolute", top: "10px", left: "10px", width: "18px", height: "18px", cursor: "pointer", zIndex: 1 }}
                         />
+                        <button
+                          onClick={() => toggleFeatured(p.id, p.featured)}
+                          title={p.featured ? "Remover dos Melhores Momentos" : "Marcar como Melhor Momento"}
+                          style={{
+                            position: "absolute", top: "8px", right: "8px", zIndex: 1,
+                            width: "24px", height: "24px", borderRadius: "50%", cursor: "pointer",
+                            border: "none", display: "flex", alignItems: "center", justifyContent: "center",
+                            background: p.featured ? "var(--gold)" : "rgba(0,0,0,0.45)",
+                            color: "white", fontSize: "0.85rem", lineHeight: 1,
+                          }}
+                        >
+                          {p.featured ? "★" : "☆"}
+                        </button>
                         {p.mimeType?.startsWith("video") ? (
                           <video src={p.fileUrl} style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px" }} muted />
                         ) : (
                           <img src={p.thumbnailUrl || p.fileUrl} style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px" }} alt="" />
+                        )}
+                        {p.featured && (
+                          <div style={{ fontSize: "0.65rem", fontWeight: "700", color: "var(--gold-deep)", marginTop: "3px" }}>
+                            ★ Melhor Momento
+                          </div>
                         )}
                         <div style={{ display: "flex", gap: "4px", marginTop: "6px" }}>
                           <button

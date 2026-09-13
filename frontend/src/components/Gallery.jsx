@@ -197,6 +197,33 @@ function UploaderCard({ uploader, photos, videos, onOpenLightbox }) {
   );
 }
 
+/**
+ * Card de destaque com as mídias marcadas pela família como "Melhores
+ * Momentos" — mesmo carrossel dos convidados, mas com visual diferenciado
+ * (borda dourada) e sempre no topo da galeria.
+ */
+function FeaturedCard({ photos, videos, onOpenLightbox }) {
+  const items = [...photos, ...videos];
+  const total = items.length;
+  const dividerIndex = photos.length > 0 && videos.length > 0 ? photos.length : -1;
+
+  if (total === 0) return null;
+
+  return (
+    <div className="uploader-card featured-card">
+      <div className="uploader-card-header">
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div className="uploader-avatar featured-avatar">★</div>
+          <span className="uploader-name">Melhores Momentos</span>
+        </div>
+        <span className="uploader-total-badge">{total} {total === 1 ? "arquivo" : "arquivos"}</span>
+      </div>
+
+      <MediaCarousel uploader="Melhores Momentos" items={items} dividerIndex={dividerIndex} onOpenLightbox={onOpenLightbox} />
+    </div>
+  );
+}
+
 function Lightbox({ items, startIndex, onClose }) {
   const [idx, setIdx] = useState(startIndex || 0);
   const current = items[idx];
@@ -376,6 +403,10 @@ export default function Gallery({ refreshTrigger }) {
     (isVideo ? seen[key].videos : seen[key].photos).push(p);
   });
 
+  const featured = photos.filter((p) => p.featured);
+  const featuredPhotos = featured.filter((p) => !(p.mimeType && p.mimeType.startsWith("video")));
+  const featuredVideos = featured.filter((p) => p.mimeType && p.mimeType.startsWith("video"));
+
   if (photos.length === 0 && !loading) return null;
 
   return (
@@ -390,6 +421,11 @@ export default function Gallery({ refreshTrigger }) {
           <p style={{ textAlign: "center", color: "red" }}>{error}</p>
         ) : (
           <div style={{ marginTop: "20px" }}>
+            <FeaturedCard
+              photos={featuredPhotos}
+              videos={featuredVideos}
+              onOpenLightbox={(items, idx) => setLightbox({ items, index: idx })}
+            />
             {grouped.map((g) => (
               <UploaderCard
                 key={g.uploader}

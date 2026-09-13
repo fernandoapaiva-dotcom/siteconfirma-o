@@ -822,6 +822,20 @@ textarea {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 
+.featured-card {
+  border: 2px solid var(--gold);
+  box-shadow: 0 6px 22px rgba(184, 147, 63, 0.28);
+}
+
+.featured-card .uploader-card-header {
+  background: linear-gradient(to right, rgba(184, 147, 63, 0.14), rgba(184, 147, 63, 0));
+}
+
+.featured-avatar {
+  background: linear-gradient(135deg, var(--gold), var(--gold-deep));
+  font-size: 1.05rem;
+}
+
 .uploader-card-header {
   padding: 12px 16px;
   display: flex;

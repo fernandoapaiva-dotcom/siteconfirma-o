@@ -369,6 +369,27 @@ app.delete("/api/gallery", requireAdmin, (req, res) => {
   }
 });
 
+// Marcar/desmarcar uma foto ou vídeo como "melhor momento" (destaque na home)
+app.patch("/api/gallery/:id/featured", express.json(), requireAdmin, (req, res) => {
+  try {
+    const { featured } = req.body;
+    const galleryDbPath = path.resolve("./data/gallery.json");
+    if (fs.existsSync(galleryDbPath)) {
+      let photos = JSON.parse(fs.readFileSync(galleryDbPath, "utf8"));
+      const index = photos.findIndex((p) => p.id === req.params.id);
+      if (index !== -1) {
+        photos[index].featured = featured;
+        fs.writeFileSync(galleryDbPath, JSON.stringify(photos, null, 2));
+        return res.json({ ok: true, featured });
+      }
+    }
+    res.status(404).json({ error: "Foto nao encontrada." });
+  } catch (err) {
+    console.error("Erro ao marcar destaque:", err);
+    res.status(500).json({ error: "Falha ao marcar destaque." });
+  }
+});
+
 // A exclusão de RSVP no Sheets é complexa, então para o modo JSON vamos apenas remover do arquivo local
 app.delete("/api/rsvp/:timestamp", requireAdmin, (req, res) => {
   try {
