@@ -1,4 +1,6 @@
-import { useEffect, useState, Fragment } from "react";
+import { useEffect, useState, useRef, Fragment } from "react";
+import ReactDOM from "react-dom";
+import ZoomableImage from "./ZoomableImage.jsx";
 
 const DRIVE_FOLDER_URL = import.meta.env.VITE_DRIVE_FOLDER_URL || "";
 
@@ -424,12 +426,132 @@ export default function AdminPage() {
   );
 }
 
+/**
+ * Lista arrastável (mouse ou toque, via Pointer Events) com a ordem em que os
+ * Melhores Momentos aparecem no site. Reordena localmente enquanto arrasta
+ * pra dar retorno visual instantâneo, e só grava no servidor quando solta.
+ */
+function FeaturedManager({ senha, photos, onReordered }) {
+  const featuredItems = photos
+    .filter((p) => p.featured)
+    .sort((a, b) => {
+      const oa = a.featuredOrder ?? Infinity;
+      const ob = b.featuredOrder ?? Infinity;
+      if (oa !== ob) return oa - ob;
+      return b.timestamp - a.timestamp;
+    });
+  const featuredKey = featuredItems.map((p) => p.id).join(",");
+
+  const [order, setOrder] = useState(() => featuredItems.map((p) => p.id));
+  useEffect(() => {
+    setOrder(featuredItems.map((p) => p.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [featuredKey]);
+
+  const containerRef = useRef(null);
+  const dragRef = useRef({ id: null, savedOrder: null });
+  const [saving, setSaving] = useState(false);
+
+  if (featuredItems.length === 0) return null;
+
+  const itemsById = Object.fromEntries(featuredItems.map((p) => [p.id, p]));
+
+  function handlePointerDown(e, id) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { id, savedOrder: order };
+  }
+
+  function handlePointerMove(e) {
+    const st = dragRef.current;
+    if (!st.id || !containerRef.current) return;
+    const rows = Array.from(containerRef.current.querySelectorAll("[data-drag-id]"));
+    let targetIdx = order.length - 1;
+    for (let i = 0; i < rows.length; i++) {
+      const rect = rows[i].getBoundingClientRect();
+      if (e.clientY < rect.top + rect.height / 2) {
+        targetIdx = i;
+        break;
+      }
+    }
+    const currentIdx = order.indexOf(st.id);
+    if (currentIdx !== -1 && currentIdx !== targetIdx) {
+      const next = [...order];
+      next.splice(currentIdx, 1);
+      next.splice(targetIdx, 0, st.id);
+      setOrder(next);
+    }
+  }
+
+  async function handlePointerUp() {
+    const st = dragRef.current;
+    if (!st.id) return;
+    const changed = st.savedOrder && st.savedOrder.join(",") !== order.join(",");
+    dragRef.current = { id: null, savedOrder: null };
+    if (!changed) return;
+    setSaving(true);
+    try {
+      await fetch("/api/gallery/reorder", {
+        method: "PATCH",
+        headers: { "X-Admin-Password": senha, "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: order }),
+      });
+      onReordered();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ background: "rgba(184, 147, 63, 0.08)", border: "1px solid var(--gold)", borderRadius: "10px", padding: "14px", marginBottom: "20px" }}>
+      <h4 style={{ margin: "0 0 4px", color: "var(--gold-deep)", fontFamily: "var(--font-display)" }}>
+        ★ Ordem dos Melhores Momentos {saving && "(salvando...)"}
+      </h4>
+      <p style={{ margin: "0 0 12px", fontSize: "0.8rem", color: "var(--sage-deep)" }}>
+        Segure a alcinha ⠿ e arraste pra mudar a ordem que aparece no site.
+      </p>
+      <div ref={containerRef} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        {order.map((id) => {
+          const p = itemsById[id];
+          if (!p) return null;
+          const isVideo = p.mimeType?.startsWith("video");
+          return (
+            <div
+              key={id}
+              data-drag-id={id}
+              style={{ display: "flex", alignItems: "center", gap: "10px", background: "white", padding: "6px 10px", borderRadius: "8px", border: "1px solid var(--line)" }}
+            >
+              <div
+                onPointerDown={(e) => handlePointerDown(e, id)}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                style={{ cursor: "grab", fontSize: "1.2rem", color: "#999", padding: "4px 8px", touchAction: "none" }}
+              >
+                ⠿
+              </div>
+              {isVideo ? (
+                <video src={`/api/video/${p.id}#t=0.5`} preload="metadata" style={{ width: "44px", height: "44px", objectFit: "cover", borderRadius: "6px" }} muted />
+              ) : (
+                <img src={`https://drive.google.com/thumbnail?id=${p.id}&sz=w100`} style={{ width: "44px", height: "44px", objectFit: "cover", borderRadius: "6px" }} alt="" />
+              )}
+              <span style={{ flex: 1, fontSize: "0.82rem", color: "var(--ink)" }}>{p.uploaderName}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function GalleryManager({ senha }) {
   const [photos, setPhotos] = useState([]);
   const [selected, setSelected] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
   const [collapsedAuthors, setCollapsedAuthors] = useState(() => new Set());
   const [moveTarget, setMoveTarget] = useState("");
+  const [preview, setPreview] = useState(null); // { author, index }
 
   async function loadPhotos() {
     try {
@@ -573,6 +695,8 @@ function GalleryManager({ senha }) {
       <p className="section-subtitle">
         Agrupado por quem enviou. Marque fotos individuais ou selecione todas de um autor para excluir de uma vez.
       </p>
+
+      <FeaturedManager senha={senha} photos={photos} onReordered={loadPhotos} />
 
       {photos.length === 0 ? (
         <p>Nenhuma foto enviada ainda.</p>
@@ -736,11 +860,18 @@ function GalleryManager({ senha }) {
                           {p.featured ? "★" : "☆"}
                         </button>
                         {p.mimeType?.startsWith("video") ? (
-                          <video src={`/api/video/${p.id}#t=0.5`} preload="metadata" style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px" }} muted />
+                          <video
+                            src={`/api/video/${p.id}#t=0.5`}
+                            preload="metadata"
+                            onClick={() => setPreview({ author, index: authorPhotos.indexOf(p) })}
+                            style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px", cursor: "pointer" }}
+                            muted
+                          />
                         ) : (
                           <img
                             src={`https://drive.google.com/thumbnail?id=${p.id}&sz=w200`}
-                            style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px" }}
+                            onClick={() => setPreview({ author, index: authorPhotos.indexOf(p) })}
+                            style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px", cursor: "pointer" }}
                             alt=""
                           />
                         )}
@@ -774,10 +905,142 @@ function GalleryManager({ senha }) {
           })}
         </>
       )}
+
+      {preview && (
+        <AdminPreviewModal
+          items={groups[preview.author] || []}
+          startIndex={preview.index}
+          onClose={() => setPreview(null)}
+          onToggleFeatured={toggleFeatured}
+          onToggleVisibility={toggleVisibility}
+        />
+      )}
     </section>
   );
 }
 
+/**
+ * Pré-visualização em tela cheia com zoom (pinça/duplo-toque), pra dar pra
+ * família ver a foto em detalhe antes de decidir se ela entra nos Melhores
+ * Momentos. Navega entre as mídias do mesmo autor e deixa marcar/desmarcar
+ * destaque e ocultar sem precisar fechar.
+ */
+function AdminPreviewModal({ items, startIndex, onClose, onToggleFeatured, onToggleVisibility }) {
+  const [idx, setIdx] = useState(startIndex || 0);
+  const current = items[idx];
 
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowRight") setIdx((p) => (p + 1) % items.length);
+      if (e.key === "ArrowLeft") setIdx((p) => (p - 1 + items.length) % items.length);
+    };
+    window.addEventListener("keydown", handleKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+      document.body.style.overflow = "";
+    };
+  }, [items.length, onClose]);
+
+  if (!current) return null;
+  const isVideo = current.mimeType?.startsWith("video");
+  const prev = (e) => { e.stopPropagation(); setIdx((p) => (p - 1 + items.length) % items.length); };
+  const next = (e) => { e.stopPropagation(); setIdx((p) => (p + 1) % items.length); };
+
+  const overlay = (
+    <div
+      style={{
+        position: "fixed", inset: 0, width: "100dvw", height: "100dvh", background: "#000",
+        zIndex: 999999, display: "flex", flexDirection: "column",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "12px 16px", background: "linear-gradient(to bottom, rgba(0,0,0,0.75), transparent)",
+          position: "absolute", top: 0, left: 0, right: 0, zIndex: 2,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span style={{ background: "rgba(255,255,255,0.18)", color: "white", padding: "5px 14px", borderRadius: "20px", fontSize: "0.85rem", fontWeight: "700" }}>
+          {current.uploaderName} · {idx + 1} / {items.length}
+        </span>
+        <button
+          onClick={onClose}
+          style={{ background: "rgba(255,255,255,0.18)", border: "none", color: "white", borderRadius: "50%", width: "38px", height: "38px", fontSize: "20px", cursor: "pointer" }}
+        >
+          &times;
+        </button>
+      </div>
+
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {isVideo ? (
+          <video
+            key={current.id}
+            src={`/api/video/${current.id}`}
+            controls
+            autoPlay
+            style={{ maxWidth: "100dvw", maxHeight: "calc(100dvh - 110px)", width: "100%", height: "100%", objectFit: "contain" }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <div
+            key={current.id}
+            style={{ width: "100dvw", height: "calc(100dvh - 110px)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ZoomableImage
+              src={`https://drive.google.com/thumbnail?id=${current.id}&sz=w1600`}
+              alt={"Foto de " + current.uploaderName}
+            />
+          </div>
+        )}
+      </div>
+
+      {items.length > 1 && (
+        <>
+          <button
+            onClick={prev}
+            style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", background: "rgba(0,0,0,0.45)", border: "none", color: "white", borderRadius: "50%", width: "42px", height: "42px", fontSize: "22px", cursor: "pointer", zIndex: 3 }}
+          >
+            &lsaquo;
+          </button>
+          <button
+            onClick={next}
+            style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", background: "rgba(0,0,0,0.45)", border: "none", color: "white", borderRadius: "50%", width: "42px", height: "42px", fontSize: "22px", cursor: "pointer", zIndex: 3 }}
+          >
+            &rsaquo;
+          </button>
+        </>
+      )}
+
+      <div
+        style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "16px 20px 24px", display: "flex", justifyContent: "center", gap: "12px", background: "linear-gradient(to top, rgba(0,0,0,0.75), transparent)", zIndex: 2 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={() => onToggleFeatured(current.id, current.featured)}
+          style={{
+            background: current.featured ? "var(--gold)" : "rgba(255,255,255,0.18)",
+            border: "none", color: "white", borderRadius: "24px", padding: "8px 18px",
+            fontSize: "0.85rem", cursor: "pointer", fontWeight: "600",
+          }}
+        >
+          {current.featured ? "★ Nos Melhores Momentos" : "☆ Marcar como Melhor Momento"}
+        </button>
+        <button
+          onClick={() => onToggleVisibility(current.id, current.hidden)}
+          style={{ background: "rgba(255,255,255,0.18)", border: "none", color: "white", borderRadius: "24px", padding: "8px 18px", fontSize: "0.85rem", cursor: "pointer" }}
+        >
+          {current.hidden ? "Mostrar no site" : "Ocultar do site"}
+        </button>
+      </div>
+    </div>
+  );
+
+  return ReactDOM.createPortal(overlay, document.body);
+}
 
 

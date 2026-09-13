@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom";
+import ZoomableImage from "./ZoomableImage.jsx";
 
 function driveThumb(fileId, size) {
   return "https://drive.google.com/thumbnail?id=" + fileId + "&sz=w" + (size || 400);
@@ -435,14 +436,14 @@ function Lightbox({ items, startIndex, onClose }) {
             />
           </div>
         ) : (
-          <img
+          <div
             key={current.id}
             className="lightbox-media-enter"
-            src={driveThumb(current.id, 1600)}
-            alt={"Foto de " + uploaderName}
-            style={{ display: "block", maxWidth: "100dvw", maxHeight: "calc(100dvh - 90px)", width: "auto", height: "auto", objectFit: "contain" }}
+            style={{ width: "100dvw", height: "calc(100dvh - 90px)" }}
             onClick={(e) => e.stopPropagation()}
-          />
+          >
+            <ZoomableImage src={driveThumb(current.id, 1600)} alt={"Foto de " + uploaderName} />
+          </div>
         )}
       </div>
 
@@ -529,9 +530,15 @@ export default function Gallery({ refreshTrigger }) {
     (isVideo ? seen[key].videos : seen[key].photos).push(p);
   });
 
+  const byFeaturedOrder = (a, b) => {
+    const oa = a.featuredOrder ?? Infinity;
+    const ob = b.featuredOrder ?? Infinity;
+    if (oa !== ob) return oa - ob;
+    return b.timestamp - a.timestamp;
+  };
   const featured = photos.filter((p) => p.featured);
-  const featuredPhotos = featured.filter((p) => !(p.mimeType && p.mimeType.startsWith("video")));
-  const featuredVideos = featured.filter((p) => p.mimeType && p.mimeType.startsWith("video"));
+  const featuredPhotos = featured.filter((p) => !(p.mimeType && p.mimeType.startsWith("video"))).sort(byFeaturedOrder);
+  const featuredVideos = featured.filter((p) => p.mimeType && p.mimeType.startsWith("video")).sort(byFeaturedOrder);
 
   if (photos.length === 0 && !loading) return null;
 

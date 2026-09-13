@@ -458,6 +458,29 @@ app.patch("/api/gallery/:id/featured", express.json(), requireAdmin, (req, res) 
   }
 });
 
+// Define a ordem de exibição dos Melhores Momentos (arrastar-e-soltar no
+// admin manda a lista de ids já na ordem desejada; grava a posição de cada
+// um num único ciclo de leitura/escrita).
+app.patch("/api/gallery/reorder", express.json(), requireAdmin, (req, res) => {
+  try {
+    const { ids } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "Informe a lista de ids na nova ordem." });
+    }
+    const galleryDbPath = path.resolve("./data/gallery.json");
+    if (fs.existsSync(galleryDbPath)) {
+      let photos = JSON.parse(fs.readFileSync(galleryDbPath, "utf8"));
+      const orderMap = new Map(ids.map((id, i) => [id, i]));
+      photos = photos.map((p) => (orderMap.has(p.id) ? { ...p, featuredOrder: orderMap.get(p.id) } : p));
+      fs.writeFileSync(galleryDbPath, JSON.stringify(photos, null, 2));
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Erro ao reordenar:", err);
+    res.status(500).json({ error: "Falha ao reordenar." });
+  }
+});
+
 // A exclusão de RSVP no Sheets é complexa, então para o modo JSON vamos apenas remover do arquivo local
 app.delete("/api/rsvp/:timestamp", requireAdmin, (req, res) => {
   try {
