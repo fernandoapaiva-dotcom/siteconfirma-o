@@ -736,9 +736,13 @@ function GalleryManager({ senha }) {
                           {p.featured ? "★" : "☆"}
                         </button>
                         {p.mimeType?.startsWith("video") ? (
-                          <video src={p.fileUrl} style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px" }} muted />
+                          <video src={`/api/video/${p.id}#t=0.5`} preload="metadata" style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px" }} muted />
                         ) : (
-                          <img src={p.thumbnailUrl || p.fileUrl} style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px" }} alt="" />
+                          <img
+                            src={`https://drive.google.com/thumbnail?id=${p.id}&sz=w200`}
+                            style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px" }}
+                            alt=""
+                          />
                         )}
                         {p.featured && (
                           <div style={{ fontSize: "0.65rem", fontWeight: "700", color: "var(--gold-deep)", marginTop: "3px" }}>
