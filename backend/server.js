@@ -369,6 +369,40 @@ app.delete("/api/gallery", requireAdmin, (req, res) => {
   }
 });
 
+// Move uma ou mais mídias para outro álbum (renomeia uploaderName) — ex: fotos
+// que caíram como "Convidado" porque a pessoa não digitou o nome da segunda vez.
+// Mesmo padrão de ciclo único leitura/escrita da exclusão em lote.
+app.patch("/api/gallery/move", express.json(), requireAdmin, (req, res) => {
+  try {
+    const { ids, uploaderName } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "Informe a lista de ids para mover." });
+    }
+    const novoNome = (uploaderName || "").trim();
+    if (!novoNome) {
+      return res.status(400).json({ error: "Informe o nome do álbum de destino." });
+    }
+    const galleryDbPath = path.resolve("./data/gallery.json");
+    let moved = 0;
+    if (fs.existsSync(galleryDbPath)) {
+      let photos = JSON.parse(fs.readFileSync(galleryDbPath, "utf8"));
+      const idSet = new Set(ids);
+      photos = photos.map((p) => {
+        if (idSet.has(p.id)) {
+          moved++;
+          return { ...p, uploaderName: novoNome };
+        }
+        return p;
+      });
+      fs.writeFileSync(galleryDbPath, JSON.stringify(photos, null, 2));
+    }
+    res.json({ ok: true, moved, uploaderName: novoNome });
+  } catch (err) {
+    console.error("Erro ao mover fotos:", err);
+    res.status(500).json({ error: "Falha ao mover as mídias." });
+  }
+});
+
 // Marcar/desmarcar uma foto ou vídeo como "melhor momento" (destaque na home)
 app.patch("/api/gallery/:id/featured", express.json(), requireAdmin, (req, res) => {
   try {

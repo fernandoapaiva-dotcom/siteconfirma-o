@@ -429,6 +429,7 @@ function GalleryManager({ senha }) {
   const [selected, setSelected] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
   const [collapsedAuthors, setCollapsedAuthors] = useState(() => new Set());
+  const [moveTarget, setMoveTarget] = useState("");
 
   async function loadPhotos() {
     try {
@@ -530,6 +531,34 @@ function GalleryManager({ senha }) {
     }
   }
 
+  async function moveIds(ids, uploaderName) {
+    const nome = (uploaderName || "").trim();
+    if (ids.length === 0 || !nome) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/gallery/move", {
+        method: "PATCH",
+        headers: { "X-Admin-Password": senha, "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, uploaderName: nome }),
+      });
+      if (res.ok) {
+        setSelected((prev) => {
+          const next = new Set(prev);
+          ids.forEach((id) => next.delete(id));
+          return next;
+        });
+        setMoveTarget("");
+        await loadPhotos();
+      } else {
+        alert("Erro ao mover.");
+      }
+    } catch (e) {
+      alert("Erro na requisição.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const groups = {};
   for (const p of photos) {
     const key = p.uploaderName || "Convidado";
@@ -554,11 +583,6 @@ function GalleryManager({ senha }) {
               position: "sticky",
               top: 0,
               zIndex: 2,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "12px",
-              flexWrap: "wrap",
               background: "var(--paper, #fdf8ee)",
               border: "1px solid var(--line)",
               borderRadius: "10px",
@@ -566,31 +590,68 @@ function GalleryManager({ senha }) {
               margin: "16px 0",
             }}
           >
-            <span style={{ fontSize: "0.85rem", fontWeight: "600", color: "var(--ink)" }}>
-              {selected.size > 0
-                ? `${selected.size} mídia${selected.size > 1 ? "s" : ""} selecionada${selected.size > 1 ? "s" : ""}`
-                : `${photos.length} mídia(s) no total, de ${authors.length} autor(es)`}
-            </span>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "0.85rem", fontWeight: "600", color: "var(--ink)" }}>
+                {selected.size > 0
+                  ? `${selected.size} mídia${selected.size > 1 ? "s" : ""} selecionada${selected.size > 1 ? "s" : ""}`
+                  : `${photos.length} mídia(s) no total, de ${authors.length} autor(es)`}
+              </span>
+              {selected.size > 0 && (
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    onClick={() => { setSelected(new Set()); setMoveTarget(""); }}
+                    disabled={busy}
+                    style={{ background: "transparent", border: "1px solid var(--line)", color: "var(--ink)", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "0.8rem" }}
+                  >
+                    Limpar seleção
+                  </button>
+                  <button
+                    onClick={() =>
+                      deleteIds(
+                        Array.from(selected),
+                        `Excluir ${selected.size} mídia(s) selecionada(s) da galeria do site? (Continuam salvas no Google Drive)`
+                      )
+                    }
+                    disabled={busy}
+                    style={{ background: "red", color: "white", border: "none", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "0.8rem", fontWeight: "600" }}
+                  >
+                    {busy ? "Excluindo..." : `Excluir selecionadas (${selected.size})`}
+                  </button>
+                </div>
+              )}
+            </div>
+
             {selected.size > 0 && (
-              <div style={{ display: "flex", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", marginTop: "10px", paddingTop: "10px", borderTop: "1px dashed var(--line)" }}>
+                <span style={{ fontSize: "0.8rem", color: "var(--sage-deep)", fontWeight: "600" }}>Mover para o álbum de:</span>
+                <input
+                  type="text"
+                  list="album-names"
+                  value={moveTarget}
+                  onChange={(e) => setMoveTarget(e.target.value)}
+                  placeholder="Nome da pessoa (ex: Rosana)"
+                  style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid var(--line)", fontSize: "0.8rem", flex: "1", minWidth: "160px" }}
+                />
+                <datalist id="album-names">
+                  {authors.map((a) => (
+                    <option key={a} value={a} />
+                  ))}
+                </datalist>
                 <button
-                  onClick={() => setSelected(new Set())}
-                  disabled={busy}
-                  style={{ background: "transparent", border: "1px solid var(--line)", color: "var(--ink)", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "0.8rem" }}
+                  onClick={() => moveIds(Array.from(selected), moveTarget)}
+                  disabled={busy || !moveTarget.trim()}
+                  style={{
+                    background: moveTarget.trim() ? "var(--gold)" : "var(--line)",
+                    color: "white",
+                    border: "none",
+                    padding: "6px 14px",
+                    borderRadius: "6px",
+                    cursor: moveTarget.trim() ? "pointer" : "not-allowed",
+                    fontSize: "0.8rem",
+                    fontWeight: "600",
+                  }}
                 >
-                  Limpar seleção
-                </button>
-                <button
-                  onClick={() =>
-                    deleteIds(
-                      Array.from(selected),
-                      `Excluir ${selected.size} mídia(s) selecionada(s) da galeria do site? (Continuam salvas no Google Drive)`
-                    )
-                  }
-                  disabled={busy}
-                  style={{ background: "red", color: "white", border: "none", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", fontSize: "0.8rem", fontWeight: "600" }}
-                >
-                  {busy ? "Excluindo..." : `Excluir selecionadas (${selected.size})`}
+                  {busy ? "Movendo..." : "Mover"}
                 </button>
               </div>
             )}
