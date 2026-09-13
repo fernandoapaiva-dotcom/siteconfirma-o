@@ -985,35 +985,97 @@ textarea {
   white-space: nowrap;
 }
 
-/* Tira de miniaturas: fotos à esquerda, vídeos à direita, com uma divisória
-   visual entre os dois grupos (só aparece quando a pessoa mandou os dois). */
-.carousel-thumbs-wrap {
+/* Playlists verticais estilo YouTube: Vídeos e Fotos em listas roláveis
+   separadas (em vez de uma faixa horizontal só), cada uma com seu título. */
+.carousel-playlists {
   background: #faf8f4;
-}
-
-.carousel-thumbs-labels {
+  padding: 10px 12px 12px;
   display: flex;
-  justify-content: space-between;
-  padding: 8px 14px 0;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.carousel-thumbs-labels span {
+.carousel-playlist-title {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 0.68rem;
+  gap: 6px;
+  font-size: 0.72rem;
   font-weight: 700;
   color: var(--sage-deep);
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
 }
 
-.carousel-thumb-divider {
+.carousel-playlist-count {
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 9px;
+  padding: 0 7px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.carousel-playlist-rows {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 2px;
+}
+
+.carousel-playlist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.carousel-playlist-row:hover {
+  background: rgba(184, 147, 63, 0.08);
+}
+
+.carousel-playlist-row.active {
+  background: rgba(184, 147, 63, 0.14);
+  border-color: var(--gold-deep);
+}
+
+.carousel-playlist-row.picked {
+  border-color: var(--gold-deep);
+}
+
+.carousel-playlist-thumb {
+  position: relative;
   flex-shrink: 0;
-  width: 1px;
-  align-self: stretch;
-  background: var(--line);
-  margin: 4px 2px;
+  width: 64px;
+  height: 44px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #1a1a1a;
+  transition: transform 0.15s ease;
+}
+
+.carousel-playlist-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+
+.carousel-playlist-label {
+  font-size: 0.8rem;
+  color: var(--ink);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Palco principal do carrossel: fluido, acompanha a largura do card em
@@ -1086,48 +1148,6 @@ textarea {
 
 .carousel-nav:active {
   transform: translateY(-50%) scale(0.92);
-}
-
-.carousel-thumbs {
-  display: flex;
-  gap: 6px;
-  padding: 8px 12px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  background: #faf8f4;
-}
-
-.carousel-thumbs::-webkit-scrollbar {
-  display: none;
-}
-
-.carousel-thumb {
-  flex-shrink: 0;
-  width: 52px;
-  height: 52px;
-  border-radius: 8px;
-  overflow: hidden;
-  cursor: pointer;
-  border: 2.5px solid transparent;
-  position: relative;
-  transition: border-color 0.15s ease, transform 0.15s ease;
-}
-
-.carousel-thumb.active {
-  border-color: var(--gold-deep);
-}
-
-.carousel-thumb.picked {
-  border-color: var(--gold-deep);
-}
-
-.carousel-thumb img,
-.carousel-thumb video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  pointer-events: none;
 }
 
 .carousel-thumb-play {
@@ -1213,8 +1233,8 @@ textarea {
   .carousel-stage:hover video {
     transform: scale(1.035);
   }
-  .carousel-thumb:hover {
-    transform: translateY(-2px);
+  .carousel-playlist-row:hover .carousel-playlist-thumb {
+    transform: scale(1.04);
   }
   .carousel-share-btn:hover {
     color: var(--gold-deep);
@@ -1231,9 +1251,9 @@ textarea {
     height: 42px;
     font-size: 20px;
   }
-  .carousel-thumb {
-    width: 60px;
-    height: 60px;
+  .carousel-playlist-thumb {
+    width: 76px;
+    height: 52px;
   }
 }
 
@@ -1258,7 +1278,7 @@ textarea {
   }
   .carousel-stage img,
   .carousel-stage video,
-  .carousel-thumb {
+  .carousel-playlist-thumb {
     transition: none;
   }
 }

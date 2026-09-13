@@ -122,28 +122,72 @@ function CheckIcon() {
 }
 
 /**
+ * Uma "playlist" vertical estilo YouTube: lista rolável de miniaturas com
+ * nome de quem enviou, usada tanto pra Vídeos quanto pra Fotos — cada uma
+ * na sua própria lista em vez de misturadas numa faixa só.
+ */
+function PlaylistList({ icon, title, rowItems, items, current, selectMode, selectedIds, onPick }) {
+  return (
+    <div className="carousel-playlist">
+      <div className="carousel-playlist-title">
+        {icon} {title} <span className="carousel-playlist-count">{rowItems.length}</span>
+      </div>
+      <div className="carousel-playlist-rows">
+        {rowItems.map((p, i) => {
+          const idx = items.indexOf(p);
+          const isVid = p.mimeType && p.mimeType.startsWith("video");
+          const picked = selectMode && selectedIds.has(p.id);
+          return (
+            <div
+              key={p.id}
+              data-idx={idx}
+              onClick={(e) => { e.stopPropagation(); onPick(idx, p.id); }}
+              className={`carousel-playlist-row ${idx === current ? "active" : ""} ${picked ? "picked" : ""}`}
+            >
+              <div className="carousel-playlist-thumb">
+                <img src={driveThumb(p.id, 120)} alt="" loading="lazy" />
+                {isVid && <div className="carousel-thumb-play"><PlayIcon size={14} /></div>}
+                {selectMode && (
+                  <div className={`carousel-thumb-check ${picked ? "checked" : ""}`}>
+                    {picked && <CheckIcon />}
+                  </div>
+                )}
+              </div>
+              <span className="carousel-playlist-label">{isVid ? "Vídeo" : "Foto"} {i + 1}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Carrossel de mídia de um único convidado, já filtrado por tipo (fotos OU vídeos).
  * Troca de slide com um fade suave em vez de um corte seco.
  */
-function MediaCarousel({ uploader, items, dividerIndex = -1, onOpenLightbox }) {
+function MediaCarousel({ uploader, photos, videos, onOpenLightbox }) {
+  const items = [...photos, ...videos];
   const [current, setCurrent] = useState(0);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [shareStatus, setShareStatus] = useState(null);
-  const thumbsRef = useRef(null);
+  const playlistsRef = useRef(null);
 
-  // Se o item ativo desaparecer (ex: trocou de aba Fotos/Vídeos), volta pro início.
+  // Se o conjunto de mídias mudar (ex: mais uma chegou), volta pro início.
+  const itemsKey = items.map((it) => it.id).join(",");
   useEffect(() => {
     setCurrent(0);
     setSelectMode(false);
     setSelectedIds(new Set());
-  }, [items]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsKey]);
 
   const goTo = (idx) => {
     setCurrent(idx);
-    if (thumbsRef.current) {
-      const thumb = thumbsRef.current.children[idx];
-      if (thumb) thumb.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    if (playlistsRef.current) {
+      const row = playlistsRef.current.querySelector(`[data-idx="${idx}"]`);
+      if (row) row.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   };
 
@@ -185,12 +229,11 @@ function MediaCarousel({ uploader, items, dividerIndex = -1, onOpenLightbox }) {
       <div className="carousel-stage" onClick={() => onOpenLightbox(items, current)}>
         {isVideo ? (
           <div key={item.id} className="carousel-media-enter" style={{ position: "absolute", inset: 0 }}>
-            <video
-              src={"/api/video/" + item.id + "#t=0.5"}
-              preload="metadata"
-              playsInline
-              muted
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }}
+            <img
+              src={driveThumb(item.id, 800)}
+              alt={"Vídeo de " + uploader}
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              onError={(e) => { e.target.style.opacity = "0.2"; }}
             />
             <div className="carousel-play-badge"><PlayIcon /></div>
           </div>
@@ -218,43 +261,31 @@ function MediaCarousel({ uploader, items, dividerIndex = -1, onOpenLightbox }) {
       </div>
 
       {items.length > 1 && (
-        <div className="carousel-thumbs-wrap">
-          {dividerIndex > 0 && (
-            <div className="carousel-thumbs-labels">
-              <span><CameraIcon /> Fotos</span>
-              <span><VideoIcon /> Vídeos</span>
-            </div>
+        <div ref={playlistsRef} className="carousel-playlists">
+          {videos.length > 0 && (
+            <PlaylistList
+              icon={<VideoIcon />}
+              title="Vídeos"
+              rowItems={videos}
+              items={items}
+              current={current}
+              selectMode={selectMode}
+              selectedIds={selectedIds}
+              onPick={(idx, id) => { if (selectMode) toggleSelected(id); else goTo(idx); }}
+            />
           )}
-          <div ref={thumbsRef} className="carousel-thumbs">
-            {items.map((p, i) => {
-              const isVid = p.mimeType && p.mimeType.startsWith("video");
-              return (
-                <Fragment key={p.id}>
-                  {i === dividerIndex && <div className="carousel-thumb-divider" />}
-                  <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (selectMode) toggleSelected(p.id);
-                      else goTo(i);
-                    }}
-                    className={`carousel-thumb ${i === current ? "active" : ""} ${selectMode && selectedIds.has(p.id) ? "picked" : ""}`}
-                  >
-                    {isVid ? (
-                      <video src={"/api/video/" + p.id + "#t=0.5"} preload="metadata" playsInline muted />
-                    ) : (
-                      <img src={driveThumb(p.id, 100)} alt="" />
-                    )}
-                    {isVid && <div className="carousel-thumb-play"><PlayIcon size={12} /></div>}
-                    {selectMode && (
-                      <div className={`carousel-thumb-check ${selectedIds.has(p.id) ? "checked" : ""}`}>
-                        {selectedIds.has(p.id) && <CheckIcon />}
-                      </div>
-                    )}
-                  </div>
-                </Fragment>
-              );
-            })}
-          </div>
+          {photos.length > 0 && (
+            <PlaylistList
+              icon={<CameraIcon />}
+              title="Fotos"
+              rowItems={photos}
+              items={items}
+              current={current}
+              selectMode={selectMode}
+              selectedIds={selectedIds}
+              onPick={(idx, id) => { if (selectMode) toggleSelected(id); else goTo(idx); }}
+            />
+          )}
         </div>
       )}
 
@@ -305,14 +336,11 @@ function MediaCarousel({ uploader, items, dividerIndex = -1, onOpenLightbox }) {
 }
 
 /**
- * Card de um convidado: nome, contagem total e um único carrossel com fotos
- * e vídeos juntos — fotos primeiro (esquerda), vídeos depois (direita), com
- * uma divisória visual na tira de miniaturas entre os dois grupos.
+ * Card de um convidado: nome, contagem total e um carrossel com duas
+ * playlists verticais separadas — Vídeos e Fotos, cada uma na sua lista.
  */
 function UploaderCard({ uploader, photos, videos, onOpenLightbox }) {
-  const items = [...photos, ...videos];
-  const total = items.length;
-  const dividerIndex = photos.length > 0 && videos.length > 0 ? photos.length : -1;
+  const total = photos.length + videos.length;
 
   return (
     <div className="uploader-card">
@@ -324,7 +352,7 @@ function UploaderCard({ uploader, photos, videos, onOpenLightbox }) {
         <span className="uploader-total-badge">{total} {total === 1 ? "arquivo" : "arquivos"}</span>
       </div>
 
-      <MediaCarousel uploader={uploader} items={items} dividerIndex={dividerIndex} onOpenLightbox={onOpenLightbox} />
+      <MediaCarousel uploader={uploader} photos={photos} videos={videos} onOpenLightbox={onOpenLightbox} />
     </div>
   );
 }
@@ -335,9 +363,7 @@ function UploaderCard({ uploader, photos, videos, onOpenLightbox }) {
  * (borda dourada) e sempre no topo da galeria.
  */
 function FeaturedCard({ photos, videos, onOpenLightbox }) {
-  const items = [...photos, ...videos];
-  const total = items.length;
-  const dividerIndex = photos.length > 0 && videos.length > 0 ? photos.length : -1;
+  const total = photos.length + videos.length;
 
   if (total === 0) return null;
 
@@ -352,7 +378,7 @@ function FeaturedCard({ photos, videos, onOpenLightbox }) {
         <span className="uploader-total-badge">{total} {total === 1 ? "arquivo" : "arquivos"}</span>
       </div>
 
-      <MediaCarousel uploader="Melhores Momentos" items={items} dividerIndex={dividerIndex} onOpenLightbox={onOpenLightbox} />
+      <MediaCarousel uploader="Melhores Momentos" photos={photos} videos={videos} onOpenLightbox={onOpenLightbox} />
     </div>
   );
 }
@@ -428,12 +454,11 @@ function Lightbox({ items, startIndex, onClose }) {
             style={{ width: "100dvw", height: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: "#000" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <video
-              src={"/api/video/" + current.id}
-              controls
-              playsInline
-              autoPlay
-              style={{ maxWidth: "100dvw", maxHeight: "calc(100dvh - 120px)", width: "100%", height: "100%", objectFit: "contain", display: "block", border: "none", outline: "none" }}
+            <iframe
+              src={"https://drive.google.com/file/d/" + current.id + "/preview"}
+              allow="autoplay"
+              allowFullScreen
+              style={{ maxWidth: "100dvw", maxHeight: "calc(100dvh - 120px)", width: "100%", height: "100%", border: "none", outline: "none", background: "#000" }}
             />
           </div>
         ) : (

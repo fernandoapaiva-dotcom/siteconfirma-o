@@ -537,7 +537,6 @@ function FeaturedManager({ senha, photos, onReordered }) {
         {order.map((id) => {
           const p = itemsById[id];
           if (!p) return null;
-          const isVideo = p.mimeType?.startsWith("video");
           return (
             <div
               key={id}
@@ -553,11 +552,7 @@ function FeaturedManager({ senha, photos, onReordered }) {
               >
                 ⠿
               </div>
-              {isVideo ? (
-                <video src={`/api/video/${p.id}#t=0.5`} preload="metadata" style={{ width: "44px", height: "44px", objectFit: "cover", borderRadius: "6px" }} muted />
-              ) : (
-                <img src={`https://drive.google.com/thumbnail?id=${p.id}&sz=w100`} style={{ width: "44px", height: "44px", objectFit: "cover", borderRadius: "6px" }} alt="" />
-              )}
+              <img src={`https://drive.google.com/thumbnail?id=${p.id}&sz=w100`} style={{ width: "44px", height: "44px", objectFit: "cover", borderRadius: "6px" }} alt="" />
               <span style={{ flex: 1, fontSize: "0.82rem", color: "var(--ink)" }}>{p.uploaderName}</span>
             </div>
           );
@@ -881,21 +876,16 @@ function GalleryManager({ senha }) {
                         >
                           {p.featured ? "★" : "☆"}
                         </button>
-                        {p.mimeType?.startsWith("video") ? (
-                          <video
-                            src={`/api/video/${p.id}#t=0.5`}
-                            preload="metadata"
-                            onClick={() => setPreview({ author, index: authorPhotos.indexOf(p) })}
-                            style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px", cursor: "pointer" }}
-                            muted
-                          />
-                        ) : (
-                          <img
-                            src={`https://drive.google.com/thumbnail?id=${p.id}&sz=w200`}
-                            onClick={() => setPreview({ author, index: authorPhotos.indexOf(p) })}
-                            style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px", cursor: "pointer" }}
-                            alt=""
-                          />
+                        <img
+                          src={`https://drive.google.com/thumbnail?id=${p.id}&sz=w200`}
+                          onClick={() => setPreview({ author, index: authorPhotos.indexOf(p) })}
+                          style={{ width: "100%", height: "80px", objectFit: "cover", borderRadius: "4px", cursor: "pointer" }}
+                          alt=""
+                        />
+                        {p.mimeType?.startsWith("video") && (
+                          <div style={{ position: "absolute", top: "38px", left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,0.55)", borderRadius: "50%", width: "26px", height: "26px", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21" /></svg>
+                          </div>
                         )}
                         {p.featured && (
                           <div style={{ fontSize: "0.65rem", fontWeight: "700", color: "var(--gold-deep)", marginTop: "3px" }}>
@@ -999,12 +989,12 @@ function AdminPreviewModal({ items, startIndex, onClose, onToggleFeatured, onTog
 
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
         {isVideo ? (
-          <video
+          <iframe
             key={current.id}
-            src={`/api/video/${current.id}`}
-            controls
-            autoPlay
-            style={{ maxWidth: "100dvw", maxHeight: "calc(100dvh - 110px)", width: "100%", height: "100%", objectFit: "contain" }}
+            src={`https://drive.google.com/file/d/${current.id}/preview`}
+            allow="autoplay"
+            allowFullScreen
+            style={{ maxWidth: "100dvw", maxHeight: "calc(100dvh - 110px)", width: "100%", height: "100%", border: "none", background: "#000" }}
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
