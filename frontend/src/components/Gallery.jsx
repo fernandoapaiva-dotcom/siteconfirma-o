@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 
 function driveThumb(fileId, size) {
@@ -35,7 +35,7 @@ function PlayIcon({ size = 22 }) {
 
 function CameraIcon() {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
       <circle cx="12" cy="13" r="4" />
     </svg>
@@ -44,45 +44,162 @@ function CameraIcon() {
 
 function VideoIcon() {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <polygon points="23 7 16 12 23 17 23 7" />
       <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
     </svg>
   );
 }
 
-function GalleryTile({ item, onOpen }) {
+/**
+ * Carrossel de mídia de um único convidado, já filtrado por tipo (fotos OU vídeos).
+ * Troca de slide com um fade suave em vez de um corte seco.
+ */
+function MediaCarousel({ uploader, items, onOpenLightbox }) {
+  const [current, setCurrent] = useState(0);
+  const thumbsRef = useRef(null);
+
+  // Se o item ativo desaparecer (ex: trocou de aba Fotos/Vídeos), volta pro início.
+  useEffect(() => { setCurrent(0); }, [items]);
+
+  const goTo = (idx) => {
+    setCurrent(idx);
+    if (thumbsRef.current) {
+      const thumb = thumbsRef.current.children[idx];
+      if (thumb) thumb.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    }
+  };
+
+  const prev = (e) => { e.stopPropagation(); goTo((current - 1 + items.length) % items.length); };
+  const next = (e) => { e.stopPropagation(); goTo((current + 1) % items.length); };
+
+  const item = items[current];
+  if (!item) return null;
   const isVideo = item.mimeType && item.mimeType.startsWith("video");
-  const uploaderName = (item.uploaderName || "Convidado").trim();
+
+  const handleShare = async (e) => {
+    e.stopPropagation();
+    const url = isVideo
+      ? "https://drive.google.com/file/d/" + item.id + "/view?usp=sharing"
+      : driveThumb(item.id, 1200);
+    if (navigator.share) {
+      try { await navigator.share({ title: "Batizado da Analu - " + uploader, url }); } catch (err) {}
+    } else {
+      try { await navigator.clipboard.writeText(url); alert("Link copiado!"); } catch (err) { alert(url); }
+    }
+  };
 
   return (
-    <div className="gallery-tile" onClick={onOpen}>
-      {isVideo ? (
-        <video
-          src={"/api/video/" + item.id + "#t=0.5"}
-          preload="metadata"
-          playsInline
-          muted
-        />
-      ) : (
-        <img
-          src={driveThumb(item.id, 300)}
-          alt={"Foto de " + uploaderName}
-          loading="lazy"
-          onError={(e) => { e.target.style.opacity = "0.15"; }}
-        />
-      )}
+    <>
+      <div className="carousel-stage" onClick={() => onOpenLightbox(items, current)}>
+        {isVideo ? (
+          <div key={item.id} className="carousel-media-enter" style={{ position: "absolute", inset: 0 }}>
+            <video
+              src={"/api/video/" + item.id + "#t=0.5"}
+              preload="metadata"
+              playsInline
+              muted
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }}
+            />
+            <div className="carousel-play-badge"><PlayIcon /></div>
+          </div>
+        ) : (
+          <img
+            key={item.id}
+            className="carousel-media-enter"
+            src={driveThumb(item.id, 800)}
+            alt={"Foto de " + uploader}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+            onError={(e) => { e.target.style.opacity = "0.2"; }}
+          />
+        )}
 
-      {isVideo && (
-        <div className="gallery-tile-play">
-          <PlayIcon size={18} />
+        {items.length > 1 && (
+          <div className="carousel-counter">{current + 1} / {items.length}</div>
+        )}
+
+        {items.length > 1 && (
+          <>
+            <button className="carousel-nav carousel-nav-prev" onClick={prev} aria-label="Anterior">&lsaquo;</button>
+            <button className="carousel-nav carousel-nav-next" onClick={next} aria-label="Próxima">&rsaquo;</button>
+          </>
+        )}
+      </div>
+
+      {items.length > 1 && (
+        <div ref={thumbsRef} className="carousel-thumbs">
+          {items.map((p, i) => {
+            const isVid = p.mimeType && p.mimeType.startsWith("video");
+            return (
+              <div
+                key={p.id}
+                onClick={(e) => { e.stopPropagation(); goTo(i); }}
+                className={`carousel-thumb ${i === current ? "active" : ""}`}
+              >
+                {isVid ? (
+                  <video src={"/api/video/" + p.id + "#t=0.5"} preload="metadata" playsInline muted />
+                ) : (
+                  <img src={driveThumb(p.id, 100)} alt="" />
+                )}
+                {isVid && <div className="carousel-thumb-play"><PlayIcon size={12} /></div>}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <div className="gallery-tile-badge">
-        <div className="gallery-tile-avatar">{uploaderName.charAt(0).toUpperCase()}</div>
-        <span className="gallery-tile-name">{uploaderName}</span>
+      <div className="carousel-footer">
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#888", fontSize: "0.9rem" }}>
+          <HeartIcon color="#888" />
+          <span>{item.likes || 0}</span>
+        </div>
+        <button onClick={handleShare} className="carousel-share-btn">
+          <ShareIcon />
+          Compartilhar
+        </button>
       </div>
+    </>
+  );
+}
+
+/**
+ * Card de um convidado: nome, contagem total e abas Fotos/Vídeos (só aparecem
+ * quando a pessoa mandou os dois tipos) que trocam qual carrossel é exibido.
+ */
+function UploaderCard({ uploader, photos, videos, onOpenLightbox }) {
+  const hasBoth = photos.length > 0 && videos.length > 0;
+  const [mediaType, setMediaType] = useState(photos.length > 0 ? "fotos" : "videos");
+  const items = mediaType === "fotos" ? photos : videos;
+  const total = photos.length + videos.length;
+
+  return (
+    <div className="uploader-card">
+      <div className="uploader-card-header">
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div className="uploader-avatar">{uploader.trim().charAt(0).toUpperCase()}</div>
+          <span className="uploader-name">{uploader.trim()}</span>
+        </div>
+        <span className="uploader-total-badge">{total} {total === 1 ? "arquivo" : "arquivos"}</span>
+      </div>
+
+      {hasBoth && (
+        <div className="uploader-media-tabs">
+          <button
+            className={`uploader-media-tab ${mediaType === "fotos" ? "active" : ""}`}
+            onClick={() => setMediaType("fotos")}
+          >
+            <CameraIcon /> Fotos <span className="uploader-media-tab-count">{photos.length}</span>
+          </button>
+          <button
+            className={`uploader-media-tab ${mediaType === "videos" ? "active" : ""}`}
+            onClick={() => setMediaType("videos")}
+          >
+            <VideoIcon /> Vídeos <span className="uploader-media-tab-count">{videos.length}</span>
+          </button>
+        </div>
+      )}
+
+      <MediaCarousel uploader={uploader} items={items} onOpenLightbox={onOpenLightbox} />
     </div>
   );
 }
@@ -152,12 +269,12 @@ function Lightbox({ items, startIndex, onClose }) {
       >
         {isVideo ? (
           <div
+            key={current.id}
             className="lightbox-media-enter"
             style={{ width: "100vw", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#000" }}
             onClick={(e) => e.stopPropagation()}
           >
             <video
-              key={current.id}
               src={"/api/video/" + current.id}
               controls
               playsInline
@@ -237,7 +354,6 @@ export default function Gallery({ refreshTrigger }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lightbox, setLightbox] = useState(null); // { items, index }
-  const [activeTab, setActiveTab] = useState("fotos");
 
   useEffect(() => { fetchGallery(); }, [refreshTrigger]);
 
@@ -253,69 +369,43 @@ export default function Gallery({ refreshTrigger }) {
     }
   }
 
-  const photoItems = photos.filter((p) => !(p.mimeType && p.mimeType.startsWith("video")));
-  const videoItems = photos.filter((p) => p.mimeType && p.mimeType.startsWith("video"));
-
-  useEffect(() => {
-    // Se a aba ativa ficar sem conteúdo (ex: só chegaram vídeos), muda pra que tem algo.
-    if (activeTab === "fotos" && photoItems.length === 0 && videoItems.length > 0) {
-      setActiveTab("videos");
-    } else if (activeTab === "videos" && videoItems.length === 0 && photoItems.length > 0) {
-      setActiveTab("fotos");
+  // Agrupa por convidado (mantendo a ordem de primeiro envio) e já separa
+  // cada grupo em fotos e vídeos.
+  const grouped = [];
+  const seen = {};
+  photos.forEach((p) => {
+    const key = (p.uploaderName || "").trim();
+    if (!seen[key]) {
+      seen[key] = { uploader: key, photos: [], videos: [] };
+      grouped.push(seen[key]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [photos.length]);
+    const isVideo = p.mimeType && p.mimeType.startsWith("video");
+    (isVideo ? seen[key].videos : seen[key].photos).push(p);
+  });
 
   if (photos.length === 0 && !loading) return null;
-
-  const activeItems = activeTab === "fotos" ? photoItems : videoItems;
 
   return (
     <>
       <div className="section" style={{ marginTop: "24px" }}>
-        <h2 className="section-title">Galeria</h2>
-        <p className="section-subtitle">Momentos eternizados por vocês</p>
+        <h2 className="section-title">Galeria de Fotos</h2>
+        <p className="section-subtitle">Momentos eternizados</p>
 
         {loading ? (
           <p style={{ textAlign: "center", color: "var(--sage-deep)" }}>Carregando...</p>
         ) : error ? (
           <p style={{ textAlign: "center", color: "red" }}>{error}</p>
         ) : (
-          <div style={{ marginTop: "18px" }}>
-            <div className="gallery-tabs">
-              <button
-                className={`gallery-tab ${activeTab === "fotos" ? "active" : ""}`}
-                onClick={() => setActiveTab("fotos")}
-              >
-                <CameraIcon />
-                Fotos
-                <span className="gallery-tab-count">{photoItems.length}</span>
-              </button>
-              <button
-                className={`gallery-tab ${activeTab === "videos" ? "active" : ""}`}
-                onClick={() => setActiveTab("videos")}
-              >
-                <VideoIcon />
-                Vídeos
-                <span className="gallery-tab-count">{videoItems.length}</span>
-              </button>
-            </div>
-
-            {activeItems.length === 0 ? (
-              <p className="gallery-empty-tab">
-                {activeTab === "fotos" ? "Nenhuma foto enviada ainda." : "Nenhum vídeo enviado ainda."}
-              </p>
-            ) : (
-              <div className="gallery-grid">
-                {activeItems.map((item, i) => (
-                  <GalleryTile
-                    key={item.id}
-                    item={item}
-                    onOpen={() => setLightbox({ items: activeItems, index: i })}
-                  />
-                ))}
-              </div>
-            )}
+          <div style={{ marginTop: "20px" }}>
+            {grouped.map((g) => (
+              <UploaderCard
+                key={g.uploader}
+                uploader={g.uploader}
+                photos={g.photos}
+                videos={g.videos}
+                onOpenLightbox={(items, idx) => setLightbox({ items, index: idx })}
+              />
+            ))}
           </div>
         )}
       </div>

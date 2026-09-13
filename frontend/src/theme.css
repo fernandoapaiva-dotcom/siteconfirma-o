@@ -813,149 +813,284 @@ textarea {
   opacity: 0.9;
 }
 
-/* Galeria de Fotos e Vídeos: abas + grade */
-.gallery-tabs {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  margin: 4px 0 20px;
+/* Galeria: um card por convidado, com abas internas Fotos/Vídeos e um carrossel */
+.uploader-card {
+  margin-bottom: 24px;
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 
-.gallery-tab {
+.uploader-card-header {
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #f0ebe0;
+}
+
+.uploader-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--gold-deep);
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 9px 18px;
-  border-radius: 24px;
+  justify-content: center;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.uploader-name {
+  font-family: var(--font-display);
+  color: var(--gold-deep);
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.uploader-total-badge {
+  background: #f5f0e8;
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  color: #888;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.uploader-media-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px 0;
+  background: #faf8f4;
+}
+
+.uploader-media-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 18px;
   border: 1px solid var(--line);
   background: white;
   color: var(--sage-deep);
   font-family: var(--font-body);
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: 0.76rem;
   cursor: pointer;
   transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
 }
 
-.gallery-tab:active {
+.uploader-media-tab:active {
   transform: scale(0.96);
 }
 
-.gallery-tab.active {
+.uploader-media-tab.active {
   background: var(--gold);
   border-color: var(--gold-deep);
   color: white;
 }
 
-.gallery-tab .gallery-tab-count {
+.uploader-media-tab-count {
   background: rgba(0, 0, 0, 0.1);
-  border-radius: 10px;
-  padding: 1px 7px;
-  font-size: 0.72rem;
+  border-radius: 9px;
+  padding: 0 6px;
+  font-size: 0.68rem;
   font-weight: 700;
 }
 
-.gallery-tab.active .gallery-tab-count {
+.uploader-media-tab.active .uploader-media-tab-count {
   background: rgba(255, 255, 255, 0.28);
 }
 
-.gallery-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
-  gap: 8px;
-}
-
-.gallery-tile {
+/* Palco principal do carrossel: fluido, acompanha a largura do card em
+   qualquer tela (celular ou desktop), com um teto de altura pra não esticar
+   demais em janelas muito largas. */
+.carousel-stage {
   position: relative;
-  aspect-ratio: 1;
-  border-radius: 10px;
-  overflow: hidden;
-  cursor: pointer;
-  background: #1a1a1a;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transition: transform 0.15s ease;
-  opacity: 0;
-  animation: galleryTileIn 0.4s ease forwards;
-}
-
-.gallery-tile:active {
-  transform: scale(0.95);
-}
-
-.gallery-tile img,
-.gallery-tile video {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  transition: transform 0.35s ease;
-}
-
-.gallery-tile:hover img,
-.gallery-tile:hover video {
-  transform: scale(1.07);
-}
-
-.gallery-tile-badge {
-  position: absolute;
-  left: 6px;
-  bottom: 6px;
-  right: 6px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  pointer-events: none;
-}
-
-.gallery-tile-avatar {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--gold-deep);
-  color: white;
-  font-size: 0.6rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  border: 1.5px solid rgba(255, 255, 255, 0.85);
-}
-
-.gallery-tile-name {
-  font-size: 0.66rem;
-  color: white;
-  font-weight: 600;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  aspect-ratio: 4 / 3;
+  max-height: 62vh;
+  background: #1a1a1a;
+  cursor: pointer;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin-top: 10px;
 }
 
-.gallery-tile-play {
+.carousel-media-enter {
+  animation: carouselFadeIn 0.35s ease;
+}
+
+.carousel-play-badge {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.6);
   border-radius: 50%;
-  width: 34px;
-  height: 34px;
+  width: 60px;
+  height: 60px;
   display: flex;
   align-items: center;
   justify-content: center;
   pointer-events: none;
 }
 
-.gallery-empty-tab {
-  text-align: center;
-  color: var(--sage-deep);
-  padding: 32px 12px;
-  font-size: 0.9rem;
+.carousel-counter {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.55);
+  color: white;
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 
-@keyframes galleryTileIn {
-  from { opacity: 0; transform: scale(0.92); }
+.carousel-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.4);
+  border: none;
+  color: white;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.carousel-nav-prev { left: 8px; }
+.carousel-nav-next { right: 8px; }
+
+.carousel-nav:active {
+  transform: translateY(-50%) scale(0.92);
+}
+
+.carousel-thumbs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: #faf8f4;
+}
+
+.carousel-thumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.carousel-thumb {
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2.5px solid transparent;
+  position: relative;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.carousel-thumb.active {
+  border-color: var(--gold-deep);
+}
+
+.carousel-thumb img,
+.carousel-thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+
+.carousel-thumb-play {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.carousel-footer {
+  padding: 10px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.carousel-share-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #888;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  padding: 4px 8px;
+  transition: color 0.15s ease;
+}
+
+/* Em telas com mouse (desktop/tablet com trackpad), reforça a navegação:
+   setas mais visíveis ao passar o mouse e leve zoom na mídia em foco. */
+@media (hover: hover) and (pointer: fine) {
+  .carousel-nav {
+    opacity: 0.72;
+  }
+  .carousel-stage:hover .carousel-nav {
+    opacity: 1;
+  }
+  .carousel-nav:hover {
+    background: rgba(0, 0, 0, 0.6);
+  }
+  .carousel-stage img,
+  .carousel-stage video {
+    transition: transform 0.4s ease;
+  }
+  .carousel-stage:hover img,
+  .carousel-stage:hover video {
+    transform: scale(1.035);
+  }
+  .carousel-thumb:hover {
+    transform: translateY(-2px);
+  }
+  .carousel-share-btn:hover {
+    color: var(--gold-deep);
+  }
+}
+
+/* Em telas mais largas, o card ganha um pouco mais de respiro. */
+@media (min-width: 640px) {
+  .uploader-name {
+    font-size: 1.05rem;
+  }
+  .carousel-nav {
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
+  }
+  .carousel-thumb {
+    width: 60px;
+    height: 60px;
+  }
+}
+
+@keyframes carouselFadeIn {
+  from { opacity: 0; transform: scale(1.015); }
   to { opacity: 1; transform: scale(1); }
 }
 
@@ -970,13 +1105,12 @@ textarea {
 
 @media (prefers-reduced-motion: reduce) {
   .lightbox-media-enter,
-  .gallery-tile {
+  .carousel-media-enter {
     animation: none;
-    opacity: 1;
   }
-  .gallery-tile,
-  .gallery-tile img,
-  .gallery-tile video {
+  .carousel-stage img,
+  .carousel-stage video,
+  .carousel-thumb {
     transition: none;
   }
 }
