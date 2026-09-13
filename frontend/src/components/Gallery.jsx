@@ -386,7 +386,7 @@ function Lightbox({ items, startIndex, onClose }) {
     <div
       style={{
         position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-        width: "100vw", height: "100vh", background: "#000", zIndex: 99999,
+        width: "100dvw", height: "100dvh", background: "#000", zIndex: 99999,
         display: "flex", flexDirection: "column", overflow: "hidden",
       }}
       onClick={close}
@@ -423,7 +423,7 @@ function Lightbox({ items, startIndex, onClose }) {
           <div
             key={current.id}
             className="lightbox-media-enter"
-            style={{ width: "100vw", height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#000" }}
+            style={{ width: "100dvw", height: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: "#000" }}
             onClick={(e) => e.stopPropagation()}
           >
             <video
@@ -431,7 +431,7 @@ function Lightbox({ items, startIndex, onClose }) {
               controls
               playsInline
               autoPlay
-              style={{ maxWidth: "100vw", maxHeight: "calc(100vh - 120px)", width: "100%", height: "100%", objectFit: "contain", display: "block", border: "none", outline: "none" }}
+              style={{ maxWidth: "100dvw", maxHeight: "calc(100dvh - 120px)", width: "100%", height: "100%", objectFit: "contain", display: "block", border: "none", outline: "none" }}
             />
           </div>
         ) : (
@@ -440,7 +440,7 @@ function Lightbox({ items, startIndex, onClose }) {
             className="lightbox-media-enter"
             src={driveThumb(current.id, 1600)}
             alt={"Foto de " + uploaderName}
-            style={{ display: "block", maxWidth: "100vw", maxHeight: "100vh", width: "auto", height: "auto", objectFit: "contain" }}
+            style={{ display: "block", maxWidth: "100dvw", maxHeight: "calc(100dvh - 90px)", width: "auto", height: "auto", objectFit: "contain" }}
             onClick={(e) => e.stopPropagation()}
           />
         )}
