@@ -5,6 +5,67 @@ function driveThumb(fileId, size) {
   return "https://drive.google.com/thumbnail?id=" + fileId + "&sz=w" + (size || 400);
 }
 
+function guessExtension(mimeType) {
+  if (!mimeType) return "jpg";
+  const sub = mimeType.split("/")[1] || "jpg";
+  return sub.split(";")[0];
+}
+
+/**
+ * Baixa a mídia de verdade (não um link) e abre o menu nativo de compartilhar
+ * do celular com o arquivo já anexado — assim dá pra mandar direto pro
+ * WhatsApp/Instagram sem passar pelo Google Drive. Se o navegador não suportar
+ * compartilhar arquivos (a maioria dos desktops), cai para baixar o(s)
+ * arquivo(s) direto.
+ */
+async function shareItems(items, { onStatus } = {}) {
+  try {
+    if (onStatus) onStatus(items.length > 1 ? `Preparando ${items.length} arquivos...` : "Preparando arquivo...");
+
+    const files = await Promise.all(
+      items.map(async (item) => {
+        const res = await fetch("/api/download/" + item.id);
+        if (!res.ok) throw new Error("Falha ao baixar " + item.id);
+        const blob = await res.blob();
+        const isVideo = item.mimeType && item.mimeType.startsWith("video");
+        const ext = guessExtension(blob.type || item.mimeType);
+        const name = `batizado-analu-${(item.uploaderName || "convidado").trim().replace(/\s+/g, "-")}-${item.id}.${ext}`;
+        return new File([blob], name, { type: blob.type || item.mimeType || (isVideo ? "video/mp4" : "image/jpeg") });
+      })
+    );
+
+    if (navigator.canShare && navigator.canShare({ files })) {
+      await navigator.share({ files, title: "Batizado da Analu" });
+      return;
+    }
+
+    if (navigator.share) {
+      // Navegador tem Web Share mas não pra arquivos — manda o link como plano B.
+      await navigator.share({ title: "Batizado da Analu", url: items[0].fileUrl });
+      return;
+    }
+
+    // Desktop sem Web Share: baixa o(s) arquivo(s) direto pro computador.
+    files.forEach((file) => {
+      const url = URL.createObjectURL(file);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      console.error("[Gallery] Erro ao compartilhar:", err);
+      alert("Não foi possível compartilhar agora. Tente novamente.");
+    }
+  } finally {
+    if (onStatus) onStatus(null);
+  }
+}
+
 function ShareIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -51,16 +112,31 @@ function VideoIcon() {
   );
 }
 
+function CheckIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
 /**
  * Carrossel de mídia de um único convidado, já filtrado por tipo (fotos OU vídeos).
  * Troca de slide com um fade suave em vez de um corte seco.
  */
 function MediaCarousel({ uploader, items, dividerIndex = -1, onOpenLightbox }) {
   const [current, setCurrent] = useState(0);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [shareStatus, setShareStatus] = useState(null);
   const thumbsRef = useRef(null);
 
   // Se o item ativo desaparecer (ex: trocou de aba Fotos/Vídeos), volta pro início.
-  useEffect(() => { setCurrent(0); }, [items]);
+  useEffect(() => {
+    setCurrent(0);
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, [items]);
 
   const goTo = (idx) => {
     setCurrent(idx);
@@ -77,16 +153,30 @@ function MediaCarousel({ uploader, items, dividerIndex = -1, onOpenLightbox }) {
   if (!item) return null;
   const isVideo = item.mimeType && item.mimeType.startsWith("video");
 
-  const handleShare = async (e) => {
+  const toggleSelected = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleShareCurrent = (e) => {
     e.stopPropagation();
-    const url = isVideo
-      ? "https://drive.google.com/file/d/" + item.id + "/view?usp=sharing"
-      : driveThumb(item.id, 1200);
-    if (navigator.share) {
-      try { await navigator.share({ title: "Batizado da Analu - " + uploader, url }); } catch (err) {}
-    } else {
-      try { await navigator.clipboard.writeText(url); alert("Link copiado!"); } catch (err) { alert(url); }
-    }
+    shareItems([item], { onStatus: setShareStatus });
+  };
+
+  const handleShareSelected = (e) => {
+    e.stopPropagation();
+    const chosen = items.filter((it) => selectedIds.has(it.id));
+    if (chosen.length === 0) return;
+    shareItems(chosen, { onStatus: setShareStatus }).then(() => exitSelectMode());
   };
 
   return (
@@ -141,8 +231,12 @@ function MediaCarousel({ uploader, items, dividerIndex = -1, onOpenLightbox }) {
                 <Fragment key={p.id}>
                   {i === dividerIndex && <div className="carousel-thumb-divider" />}
                   <div
-                    onClick={(e) => { e.stopPropagation(); goTo(i); }}
-                    className={`carousel-thumb ${i === current ? "active" : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (selectMode) toggleSelected(p.id);
+                      else goTo(i);
+                    }}
+                    className={`carousel-thumb ${i === current ? "active" : ""} ${selectMode && selectedIds.has(p.id) ? "picked" : ""}`}
                   >
                     {isVid ? (
                       <video src={"/api/video/" + p.id + "#t=0.5"} preload="metadata" playsInline muted />
@@ -150,6 +244,11 @@ function MediaCarousel({ uploader, items, dividerIndex = -1, onOpenLightbox }) {
                       <img src={driveThumb(p.id, 100)} alt="" />
                     )}
                     {isVid && <div className="carousel-thumb-play"><PlayIcon size={12} /></div>}
+                    {selectMode && (
+                      <div className={`carousel-thumb-check ${selectedIds.has(p.id) ? "checked" : ""}`}>
+                        {selectedIds.has(p.id) && <CheckIcon />}
+                      </div>
+                    )}
                   </div>
                 </Fragment>
               );
@@ -159,14 +258,46 @@ function MediaCarousel({ uploader, items, dividerIndex = -1, onOpenLightbox }) {
       )}
 
       <div className="carousel-footer">
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#888", fontSize: "0.9rem" }}>
-          <HeartIcon color="#888" />
-          <span>{item.likes || 0}</span>
-        </div>
-        <button onClick={handleShare} className="carousel-share-btn">
-          <ShareIcon />
-          Compartilhar
-        </button>
+        {selectMode ? (
+          <>
+            <span style={{ fontSize: "0.82rem", fontWeight: "600", color: "var(--ink)" }}>
+              {selectedIds.size === 0
+                ? "Toque nas mídias que quer enviar"
+                : `${selectedIds.size} selecionada${selectedIds.size > 1 ? "s" : ""}`}
+            </span>
+            <div style={{ display: "flex", gap: "6px" }}>
+              <button onClick={(e) => { e.stopPropagation(); exitSelectMode(); }} className="carousel-share-btn">
+                Cancelar
+              </button>
+              <button
+                onClick={handleShareSelected}
+                disabled={selectedIds.size === 0 || !!shareStatus}
+                className="carousel-share-btn carousel-share-btn-primary"
+              >
+                <ShareIcon />
+                {shareStatus || `Enviar (${selectedIds.size})`}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#888", fontSize: "0.9rem" }}>
+              <HeartIcon color="#888" />
+              <span>{item.likes || 0}</span>
+            </div>
+            <div style={{ display: "flex", gap: "6px" }}>
+              {items.length > 1 && (
+                <button onClick={(e) => { e.stopPropagation(); setSelectMode(true); }} className="carousel-share-btn">
+                  Selecionar
+                </button>
+              )}
+              <button onClick={handleShareCurrent} disabled={!!shareStatus} className="carousel-share-btn">
+                <ShareIcon />
+                {shareStatus || "Compartilhar"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </>
   );
@@ -226,6 +357,7 @@ function FeaturedCard({ photos, videos, onOpenLightbox }) {
 
 function Lightbox({ items, startIndex, onClose }) {
   const [idx, setIdx] = useState(startIndex || 0);
+  const [shareStatus, setShareStatus] = useState(null);
   const current = items[idx];
   const isVideo = current.mimeType && current.mimeType.startsWith("video");
 
@@ -348,19 +480,13 @@ function Lightbox({ items, startIndex, onClose }) {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            const url = isVideo
-              ? "https://drive.google.com/file/d/" + current.id + "/view?usp=sharing"
-              : driveThumb(current.id, 1200);
-            if (navigator.share) {
-              navigator.share({ title: "Batizado da Analu", url }).catch(() => {});
-            } else {
-              navigator.clipboard.writeText(url).then(() => alert("Link copiado!")).catch(() => {});
-            }
+            shareItems([current], { onStatus: setShareStatus });
           }}
-          style={{ background: "rgba(255,255,255,0.18)", backdropFilter: "blur(6px)", border: "none", color: "white", borderRadius: "24px", padding: "8px 18px", fontSize: "0.85rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+          disabled={!!shareStatus}
+          style={{ background: "rgba(255,255,255,0.18)", backdropFilter: "blur(6px)", border: "none", color: "white", borderRadius: "24px", padding: "8px 18px", fontSize: "0.85rem", cursor: shareStatus ? "default" : "pointer", display: "flex", alignItems: "center", gap: "6px" }}
         >
           <ShareIcon />
-          Compartilhar
+          {shareStatus || "Compartilhar"}
         </button>
       </div>
     </div>

@@ -1007,6 +1007,10 @@ textarea {
   border-color: var(--gold-deep);
 }
 
+.carousel-thumb.picked {
+  border-color: var(--gold-deep);
+}
+
 .carousel-thumb img,
 .carousel-thumb video {
   width: 100%;
@@ -1025,11 +1029,45 @@ textarea {
   justify-content: center;
 }
 
+.carousel-thumb-check {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1.5px solid rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.carousel-thumb-check.checked {
+  background: var(--gold-deep);
+  border-color: var(--gold-deep);
+}
+
 .carousel-footer {
   padding: 10px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
+}
+
+.carousel-share-btn-primary {
+  background: var(--gold) !important;
+  color: white !important;
+  padding: 6px 14px;
+  border-radius: 18px;
+  font-weight: 600;
+}
+
+.carousel-share-btn:disabled,
+.carousel-share-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .carousel-share-btn {

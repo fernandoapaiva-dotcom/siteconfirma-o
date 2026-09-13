@@ -197,6 +197,40 @@ app.get("/api/video/:id", async (req, res) => {
   }
 });
 
+// Baixa o arquivo original (foto ou vídeo) completo, mesmo client/cache do
+// /api/video — usado pelo botão Compartilhar do site pra anexar a mídia de
+// verdade no WhatsApp/etc. em vez de mandar só um link do Google Drive.
+app.get("/api/download/:id", async (req, res) => {
+  try {
+    const fileId = req.params.id;
+    const driveInfo = getAnyDriveClient();
+
+    if (!driveInfo) {
+      return res.redirect(`https://drive.google.com/uc?export=download&id=${fileId}`);
+    }
+
+    const { drive } = driveInfo;
+
+    let meta = videoMetaCache.get(fileId);
+    if (!meta || !meta.name) {
+      const file = await drive.files.get({ fileId, fields: 'size, mimeType, name' });
+      meta = { size: parseInt(file.data.size, 10), mimeType: file.data.mimeType || 'application/octet-stream', name: file.data.name };
+      videoMetaCache.set(fileId, meta);
+    }
+
+    res.writeHead(200, {
+      'Content-Type': meta.mimeType,
+      'Content-Length': meta.size,
+      'Content-Disposition': `inline; filename="${(meta.name || fileId).replace(/"/g, "")}"`,
+    });
+    const stream = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'stream' });
+    stream.data.pipe(res);
+  } catch (err) {
+    console.error("Erro no proxy de download:", err.message);
+    res.status(500).send("Erro ao carregar arquivo");
+  }
+});
+
 app.get("/api/gallery", (req, res) => {
   try {
     const galleryDbPath = path.resolve("./data/gallery.json");
