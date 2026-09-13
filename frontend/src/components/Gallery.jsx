@@ -126,11 +126,13 @@ function CheckIcon() {
  * nome de quem enviou, usada tanto pra Vídeos quanto pra Fotos — cada uma
  * na sua própria lista em vez de misturadas numa faixa só.
  */
-function PlaylistList({ icon, title, rowItems, items, current, selectMode, selectedIds, onPick }) {
+function PlaylistList({ icon, title, kind, rowItems, items, current, selectMode, selectedIds, onPick }) {
   return (
-    <div className="carousel-playlist">
+    <div className={`carousel-playlist carousel-playlist--${kind}`}>
       <div className="carousel-playlist-title">
-        {icon} {title} <span className="carousel-playlist-count">{rowItems.length}</span>
+        <span className="carousel-playlist-icon">{icon}</span>
+        {title}
+        <span className="carousel-playlist-count">{rowItems.length}</span>
       </div>
       <div className="carousel-playlist-rows">
         {rowItems.map((p, i) => {
@@ -266,6 +268,7 @@ function MediaCarousel({ uploader, photos, videos, onOpenLightbox }) {
             <PlaylistList
               icon={<VideoIcon />}
               title="Vídeos"
+              kind="video"
               rowItems={videos}
               items={items}
               current={current}
@@ -278,6 +281,7 @@ function MediaCarousel({ uploader, photos, videos, onOpenLightbox }) {
             <PlaylistList
               icon={<CameraIcon />}
               title="Fotos"
+              kind="photo"
               rowItems={photos}
               items={items}
               current={current}
