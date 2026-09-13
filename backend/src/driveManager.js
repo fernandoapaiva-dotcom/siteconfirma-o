@@ -32,6 +32,43 @@ export function isMockMode() {
   return getDriveConfigList().length === 0;
 }
 
+let cachedReadClient = null;
+
+/**
+ * Cliente Drive "qualquer um" para LEITURA (servir vídeos/fotos já enviados).
+ * Diferente de getAvailableDriveClient(), não faz nenhuma chamada de rede pra
+ * checar cota — não faz sentido pra leitura, já que o arquivo é público
+ * ("anyone with the link") e pode ser lido por qualquer conta autenticada.
+ * Monta o client uma única vez e reaproveita, em vez de reconstruir (e
+ * potencialmente checar cota de 3 contas) a cada requisição de vídeo.
+ */
+export function getAnyDriveClient() {
+  if (cachedReadClient) return cachedReadClient;
+
+  const accounts = getDriveConfigList();
+  if (accounts.length === 0) return null;
+
+  for (const account of accounts) {
+    let drive;
+    if (account.clientId && account.clientSecret && account.refreshToken) {
+      const oauth2Client = new google.auth.OAuth2(account.clientId, account.clientSecret);
+      oauth2Client.setCredentials({ refresh_token: account.refreshToken });
+      drive = google.drive({ version: "v3", auth: oauth2Client });
+    } else if (account.keyPath) {
+      const auth = new google.auth.GoogleAuth({
+        keyFile: path.resolve(account.keyPath),
+        scopes: DRIVE_SCOPES,
+      });
+      drive = google.drive({ version: "v3", auth });
+    } else {
+      continue;
+    }
+    cachedReadClient = { drive, accountId: account.id };
+    return cachedReadClient;
+  }
+  return null;
+}
+
 // Retorna uma conta que ainda tenha espaÃ§o disponÃ­vel
 export async function getAvailableDriveClient() {
   const accounts = getDriveConfigList();

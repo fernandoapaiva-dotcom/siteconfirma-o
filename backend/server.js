@@ -8,7 +8,7 @@ import { uploadPhotoToDrive } from "./src/driveUpload.js";
 import { addConfirmation, listConfirmations } from "./src/sheetsDb.js";
 import { buildGuestListPdf } from "./src/pdfExport.js";
 import { isMockMode } from "./src/googleAuth.js";
-import { getAvailableDriveClient } from "./src/driveManager.js";
+import { getAvailableDriveClient, getAnyDriveClient } from "./src/driveManager.js";
 
 const app = express();
 const upload = multer({
@@ -136,19 +136,32 @@ app.get("/api/upload-status/:uploadId", handleChunkStatus);
 
 // --- Galeria de Fotos ---
 // Rota publica para listar todas as fotos enviadas
+// Cache em memória do tamanho/tipo de cada vídeo já consultado, pra não
+// precisar perguntar pro Drive de novo a cada seek/range request — um único
+// vídeo pode gerar dezenas dessas chamadas conforme a pessoa assiste/arrasta.
+const videoMetaCache = new Map(); // fileId -> { size, mimeType }
+
 app.get("/api/video/:id", async (req, res) => {
   try {
     const fileId = req.params.id;
-    const driveInfo = await getAvailableDriveClient();
-    
+    // Leitura de vídeo já enviado não precisa checar cota de conta nenhuma
+    // (o arquivo é público) — usa o client em cache, sem ida-e-volta extra.
+    const driveInfo = getAnyDriveClient();
+
     if (!driveInfo) {
       return res.redirect(`https://drive.google.com/uc?export=download&id=${fileId}`);
     }
 
     const { drive } = driveInfo;
-    const file = await drive.files.get({ fileId, fields: 'size, mimeType' });
-    const fileSize = parseInt(file.data.size, 10);
-    const mimeType = file.data.mimeType || 'video/mp4';
+
+    let meta = videoMetaCache.get(fileId);
+    if (!meta) {
+      const file = await drive.files.get({ fileId, fields: 'size, mimeType' });
+      meta = { size: parseInt(file.data.size, 10), mimeType: file.data.mimeType || 'video/mp4' };
+      videoMetaCache.set(fileId, meta);
+    }
+    const fileSize = meta.size;
+    const mimeType = meta.mimeType;
 
     const range = req.headers.range;
 
