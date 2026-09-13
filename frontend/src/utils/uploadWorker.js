@@ -84,7 +84,10 @@ self.onmessage = async (e) => {
             const res = await fetch("/api/upload-chunk", {
               method: "POST",
               body: formData,
-              signal: AbortSignal.timeout(15000), // Timeout de 15s para evitar socket zumbi
+              // 45s (não 15s): num celular com upload bem lento, um pedaço de
+              // 2MB pode legitimamente demorar mais que 15s — isso não é um
+              // socket morto, é só uma conexão fraca terminando o envio.
+              signal: AbortSignal.timeout(45000),
             });
 
             if (res.ok) {

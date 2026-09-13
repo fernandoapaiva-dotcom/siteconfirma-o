@@ -269,10 +269,15 @@ async function uploadDirectFile(file, guestName, { maxAttempts = 8, onRetry } = 
       formData.append("fotos", file);
       formData.append("nome", guestName || "Convidado");
 
+      // 120s (não 30s): desde que as fotos passaram a subir em tamanho
+      // original (sem compressão), um arquivo de até 8MB numa conexão de
+      // celular lenta pode legitimamente levar mais de 30s pra sair — isso
+      // não é "travado", é só maior. Um timeout curto demais aqui derrubava
+      // envios que só precisavam de mais tempo, não de uma nova tentativa.
       const res = await fetch("/api/upload", {
         method: "POST",
         body: formData,
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(120000),
       });
 
       if (!res.ok) {
