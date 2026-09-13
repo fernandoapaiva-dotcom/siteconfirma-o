@@ -262,17 +262,19 @@ export default function App() {
             </button>
           </div>
 
-          {/* Galeria de Fotos */}
-          <Gallery refreshTrigger={galleryRefresh} />
-
           <p className="footer-note">Será uma alegria compartilhar esse momento especial com você.</p>
-          
+
           <p className="invitation-footer-verse">
             "Deixai vir a mim os pequeninos, pois deles é o Reino dos Céus." <br />
             — Mateus 19:14
           </p>
         </div> {/* fim da .invitation-card */}
-        
+
+        {/* Galeria de Fotos: fica fora do convite pra poder crescer e usar um
+            layout mais largo em telas grandes, sem ficar presa à coluna
+            estreita e elegante do convite. */}
+        <Gallery refreshTrigger={galleryRefresh} />
+
         <div style={{ textAlign: "center", marginTop: "32px", marginBottom: "20px" }}>
           <a
             href="/admin"

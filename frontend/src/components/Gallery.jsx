@@ -579,7 +579,7 @@ export default function Gallery({ refreshTrigger }) {
   if (photos.length === 0 && !loading) return null;
 
   return (
-    <>
+    <div className="gallery-page">
       {!loading && !error && (featuredPhotos.length + featuredVideos.length) > 0 && (
         <div style={{ marginTop: "24px" }}>
           <FeaturedCard
@@ -590,7 +590,7 @@ export default function Gallery({ refreshTrigger }) {
         </div>
       )}
 
-      <div className="section" style={{ marginTop: "24px" }}>
+      <div className="gallery-panel" style={{ marginTop: "24px" }}>
         <h2 className="section-title">Galeria de Fotos</h2>
         <p className="section-subtitle">Momentos eternizados</p>
 
@@ -620,6 +620,6 @@ export default function Gallery({ refreshTrigger }) {
           onClose={() => setLightbox(null)}
         />
       )}
-    </>
+    </div>
   );
 }

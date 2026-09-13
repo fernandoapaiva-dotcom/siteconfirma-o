@@ -859,6 +859,19 @@ textarea {
   opacity: 0.9;
 }
 
+/* Área da galeria inteira (destaques + painel "Galeria de Fotos"), fora do
+   convite — assim pode ganhar um layout mais largo em telas grandes sem
+   mexer na coluna estreita e elegante do convite/RSVP. */
+.gallery-panel {
+  background: radial-gradient(circle at 10% 10%, rgba(138, 152, 120, 0.05) 0%, transparent 50%),
+              radial-gradient(circle at 90% 90%, rgba(184, 147, 63, 0.06) 0%, transparent 50%),
+              var(--cream-soft);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 6px 24px rgba(95, 110, 82, 0.05);
+  padding: 26px 22px;
+}
+
 /* Galeria: um card por convidado, com abas internas Fotos/Vídeos e um carrossel */
 .uploader-card {
   margin-bottom: 24px;
@@ -1308,14 +1321,14 @@ textarea {
   }
 }
 
-/* Telas largas: o card escapa da coluna estreita do convite (só pra galeria)
-   e vira um layout estilo YouTube — palco grande em cima à esquerda, a
-   playlist de Vídeos do lado à direita, e as Fotos numa faixa embaixo
-   ocupando a largura toda, organizadas em grade. */
+/* Telas largas: a galeria escapa da coluna estreita do convite (que fica
+   assim só pro convite/RSVP mesmo) e vira um layout estilo YouTube — palco
+   grande em cima à esquerda, a playlist de Vídeos do lado à direita, e as
+   Fotos numa faixa embaixo ocupando a largura toda, organizadas em grade. */
 @media (min-width: 860px) {
-  .uploader-card,
-  .featured-showcase {
-    width: min(100vw, 940px);
+  .gallery-page {
+    width: min(100vw, 980px);
+    padding: 0 20px;
     position: relative;
     left: 50%;
     transform: translateX(-50%);
@@ -1324,6 +1337,7 @@ textarea {
   .carousel-body {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 14px;
     align-items: start;
   }
 
