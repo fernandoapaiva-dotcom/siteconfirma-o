@@ -985,9 +985,11 @@ textarea {
   white-space: nowrap;
 }
 
-/* Playlists verticais estilo YouTube: Vídeos e Fotos em listas roláveis
-   separadas (em vez de uma faixa horizontal só), cada uma com seu título. */
-.carousel-playlists {
+/* Corpo do carrossel: no celular é uma coluna só (palco, vídeos, fotos,
+   nessa ordem). Em telas largas vira um layout estilo YouTube — palco maior
+   à esquerda, playlist de vídeos ao lado à direita, fotos numa faixa embaixo
+   ocupando a largura toda. Ver o media query mais abaixo. */
+.carousel-lists-wrap {
   background: #faf8f4;
   padding: 12px;
   display: flex;
@@ -1303,6 +1305,59 @@ textarea {
   .carousel-playlist-thumb {
     width: 76px;
     height: 52px;
+  }
+}
+
+/* Telas largas: o card escapa da coluna estreita do convite (só pra galeria)
+   e vira um layout estilo YouTube — palco grande em cima à esquerda, a
+   playlist de Vídeos do lado à direita, e as Fotos numa faixa embaixo
+   ocupando a largura toda, organizadas em grade. */
+@media (min-width: 860px) {
+  .uploader-card,
+  .featured-showcase {
+    width: min(100vw, 940px);
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .carousel-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    align-items: start;
+  }
+
+  .carousel-stage {
+    margin-top: 0;
+    aspect-ratio: 16 / 10;
+    max-height: min(64vh, 620px);
+  }
+
+  .featured-showcase .carousel-stage {
+    aspect-ratio: 4 / 3;
+  }
+
+  .carousel-lists-wrap {
+    display: contents;
+  }
+
+  .carousel-videos-col .carousel-playlist {
+    height: 100%;
+  }
+
+  .carousel-videos-col .carousel-playlist-rows {
+    max-height: min(58vh, 560px);
+  }
+
+  .carousel-photos-row {
+    grid-column: 1 / -1;
+  }
+
+  .carousel-photos-row .carousel-playlist-rows {
+    max-height: 300px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 3px 10px;
   }
 }
 

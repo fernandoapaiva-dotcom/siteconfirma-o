@@ -228,70 +228,76 @@ function MediaCarousel({ uploader, photos, videos, onOpenLightbox }) {
 
   return (
     <>
-      <div className="carousel-stage" onClick={() => onOpenLightbox(items, current)}>
-        {isVideo ? (
-          <div key={item.id} className="carousel-media-enter" style={{ position: "absolute", inset: 0 }}>
+      <div className="carousel-body">
+        <div className="carousel-stage" onClick={() => onOpenLightbox(items, current)}>
+          {isVideo ? (
+            <div key={item.id} className="carousel-media-enter" style={{ position: "absolute", inset: 0 }}>
+              <img
+                src={driveThumb(item.id, 800)}
+                alt={"Vídeo de " + uploader}
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                onError={(e) => { e.target.style.opacity = "0.2"; }}
+              />
+              <div className="carousel-play-badge"><PlayIcon /></div>
+            </div>
+          ) : (
             <img
+              key={item.id}
+              className="carousel-media-enter"
               src={driveThumb(item.id, 800)}
-              alt={"Vídeo de " + uploader}
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              alt={"Foto de " + uploader}
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
               onError={(e) => { e.target.style.opacity = "0.2"; }}
             />
-            <div className="carousel-play-badge"><PlayIcon /></div>
-          </div>
-        ) : (
-          <img
-            key={item.id}
-            className="carousel-media-enter"
-            src={driveThumb(item.id, 800)}
-            alt={"Foto de " + uploader}
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
-            onError={(e) => { e.target.style.opacity = "0.2"; }}
-          />
-        )}
-
-        {items.length > 1 && (
-          <div className="carousel-counter">{current + 1} / {items.length}</div>
-        )}
-
-        {items.length > 1 && (
-          <>
-            <button className="carousel-nav carousel-nav-prev" onClick={prev} aria-label="Anterior">&lsaquo;</button>
-            <button className="carousel-nav carousel-nav-next" onClick={next} aria-label="Próxima">&rsaquo;</button>
-          </>
-        )}
-      </div>
-
-      {items.length > 1 && (
-        <div ref={playlistsRef} className="carousel-playlists">
-          {videos.length > 0 && (
-            <PlaylistList
-              icon={<VideoIcon />}
-              title="Vídeos"
-              kind="video"
-              rowItems={videos}
-              items={items}
-              current={current}
-              selectMode={selectMode}
-              selectedIds={selectedIds}
-              onPick={(idx, id) => { if (selectMode) toggleSelected(id); else goTo(idx); }}
-            />
           )}
-          {photos.length > 0 && (
-            <PlaylistList
-              icon={<CameraIcon />}
-              title="Fotos"
-              kind="photo"
-              rowItems={photos}
-              items={items}
-              current={current}
-              selectMode={selectMode}
-              selectedIds={selectedIds}
-              onPick={(idx, id) => { if (selectMode) toggleSelected(id); else goTo(idx); }}
-            />
+
+          {items.length > 1 && (
+            <div className="carousel-counter">{current + 1} / {items.length}</div>
+          )}
+
+          {items.length > 1 && (
+            <>
+              <button className="carousel-nav carousel-nav-prev" onClick={prev} aria-label="Anterior">&lsaquo;</button>
+              <button className="carousel-nav carousel-nav-next" onClick={next} aria-label="Próxima">&rsaquo;</button>
+            </>
           )}
         </div>
-      )}
+
+        {items.length > 1 && (
+          <div ref={playlistsRef} className="carousel-lists-wrap">
+            {videos.length > 0 && (
+              <div className="carousel-videos-col">
+                <PlaylistList
+                  icon={<VideoIcon />}
+                  title="Vídeos"
+                  kind="video"
+                  rowItems={videos}
+                  items={items}
+                  current={current}
+                  selectMode={selectMode}
+                  selectedIds={selectedIds}
+                  onPick={(idx, id) => { if (selectMode) toggleSelected(id); else goTo(idx); }}
+                />
+              </div>
+            )}
+            {photos.length > 0 && (
+              <div className="carousel-photos-row">
+                <PlaylistList
+                  icon={<CameraIcon />}
+                  title="Fotos"
+                  kind="photo"
+                  rowItems={photos}
+                  items={items}
+                  current={current}
+                  selectMode={selectMode}
+                  selectedIds={selectedIds}
+                  onPick={(idx, id) => { if (selectMode) toggleSelected(id); else goTo(idx); }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="carousel-footer">
         {selectMode ? (
