@@ -66,6 +66,20 @@ export default function App() {
               totalFiles: pending.totalFiles || 1,
             });
             setTimeout(() => setBackgroundUpload((prev) => ({ ...prev, active: false })), 6000);
+          } else if (pending.stalled && pending.bgFetch) {
+            // O envio anterior ficou preso e a aba de origem já não existe mais
+            // pra recuperar sozinha — nada a fazer além de avisar com clareza,
+            // já que os arquivos originais só existiam na memória daquela aba.
+            try { pending.bgFetch.abort(); } catch (e) {}
+            localStorage.removeItem("analu_bg_upload");
+            setBackgroundUpload({
+              active: true,
+              progress: 0,
+              phase: "error",
+              statusText: "O envio anterior travou e não pôde continuar. Selecione as mídias e envie de novo, por favor.",
+              currentFile: 0,
+              totalFiles: pending.totalFiles || 1,
+            });
           } else if (pending.bgFetch) {
             const bgFetch = pending.bgFetch;
             setBackgroundUpload({

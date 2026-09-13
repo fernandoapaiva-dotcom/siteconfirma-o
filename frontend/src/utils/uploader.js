@@ -15,16 +15,31 @@
 
 import { backgroundKeepAlive } from "./backgroundKeepAlive.js";
 
-const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB por chunk
+const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB por chunk (pipeline de fallback, em primeiro plano)
 const DIRECT_UPLOAD_LIMIT = 8 * 1024 * 1024; // Arquivos menores que 8MB vão direto (super rápido)
 const BC_CHANNEL_NAME = "analu-upload-channel";
 
-// Kill-switch de emergência: em produção (12/09/2026), Background Fetch travou de
-// forma reprodutível em envios com vários arquivos/chunks — o registro nativo parava
-// de progredir e nunca mais recuperava, sem erro nem forma de recuperação automática.
-// Desligado até investigar com calma depois do evento; o pipeline de fallback abaixo
-// é o que efetivamente entrega as mídias enquanto isso.
-const BACKGROUND_FETCH_ENABLED = false;
+// Em produção (12/09/2026), Background Fetch travou de forma reprodutível num
+// envio com vários arquivos: cada arquivo virava dezenas de pedaços de 2MB
+// (uma foto + um vídeo = 34 requisições numa única chamada nativa), e em algum
+// ponto o registro simplesmente parava de progredir, sem erro, sem forma de
+// recuperar. Foi desligado às pressas durante o evento (ver histórico do
+// arquivo) e o pipeline de fallback abaixo assumiu 100% dos envios daquele dia.
+//
+// Reativado agora, mas com duas mudanças de fundo em vez de só religar:
+// 1. Pedaços bem maiores (8MB em vez de 2MB) SÓ pro Background Fetch — reduz um
+//    vídeo de 60MB de ~30 requisições pra ~8, o que era o suspeito mais forte da
+//    trava (o navegador não gostou de tanta requisição numa única chamada
+//    nativa). Continua picotado (e não um arquivo inteiro numa requisição só)
+//    porque o servidor só tem ~950MB de RAM — um vídeo grande inteiro de uma vez
+//    na memória do servidor arriscaria derrubar o processo.
+// 2. Um vigia de travamento: se passar muito tempo sem nenhum progresso, a
+//    chamada desiste sozinha e cai automaticamente no pipeline de fallback
+//    (o mesmo que já provou ser 100% confiável) — nunca mais fica preso pra
+//    sempre sem chance de recuperação.
+const BACKGROUND_FETCH_ENABLED = true;
+const BG_CHUNK_SIZE = 8 * 1024 * 1024; // 8MB por chunk (só no Background Fetch)
+const BG_FETCH_STALL_TIMEOUT_MS = 90 * 1000; // sem nenhum progresso por 90s = trava
 
 /**
  * Verifica se o navegador suporta Background Fetch. Na primeira visita (comum no
@@ -82,7 +97,7 @@ async function uploadViaBackgroundFetch(files, guestName, { onProgress, onSucces
   for (let fileIdx = 0; fileIdx < totalFiles; fileIdx++) {
     const file = files[fileIdx];
     const uploadId = `upl_${Date.now()}_${fileIdx}_${Math.random().toString(36).substring(2, 7)}`;
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const totalChunks = Math.ceil(file.size / BG_CHUNK_SIZE);
 
     uploadManifest.push({
       uploadId,
@@ -93,8 +108,8 @@ async function uploadViaBackgroundFetch(files, guestName, { onProgress, onSucces
     });
 
     for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
-      const start = chunkIdx * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const start = chunkIdx * BG_CHUNK_SIZE;
+      const end = Math.min(start + BG_CHUNK_SIZE, file.size);
       const chunkBlob = file.slice(start, end);
 
       const formData = new FormData();
@@ -107,10 +122,7 @@ async function uploadViaBackgroundFetch(files, guestName, { onProgress, onSucces
       formData.append("chunk", chunkBlob);
 
       allRequests.push(
-        new Request("/api/upload-chunk", {
-          method: "POST",
-          body: formData,
-        })
+        new Request("/api/upload-chunk", { method: "POST", body: formData })
       );
       totalUploadBytes += chunkBlob.size;
     }
@@ -150,16 +162,12 @@ async function uploadViaBackgroundFetch(files, guestName, { onProgress, onSucces
 
     localStorage.setItem(
       "analu_bg_upload",
-      JSON.stringify({
-        id: bgFetchId,
-        totalFiles,
-        guestName,
-        manifest: uploadManifest,
-        startedAt: Date.now(),
-      })
+      JSON.stringify({ id: bgFetchId, totalFiles, guestName, manifest: uploadManifest, startedAt: Date.now() })
     );
 
+    let lastProgressAt = Date.now();
     bgFetch.addEventListener("progress", () => {
+      lastProgressAt = Date.now();
       const uploaded = bgFetch.uploaded || 0;
       const uploadTotal = bgFetch.uploadTotal || totalUploadBytes;
       const percent = uploadTotal > 0
@@ -177,17 +185,37 @@ async function uploadViaBackgroundFetch(files, guestName, { onProgress, onSucces
 
     const bc = new BroadcastChannel(BC_CHANNEL_NAME);
 
-    return new Promise((resolve) => {
+    return await new Promise((resolve, reject) => {
+      let settled = false;
       const cleanup = () => {
         try { bc.close(); } catch (e) {}
+        clearInterval(watchdog);
         localStorage.removeItem("analu_bg_upload");
       };
 
+      // Vigia: só existe enquanto a página estiver ativa e rodando JS de verdade
+      // (se o celular estiver travado/em outro app, este timer simplesmente não
+      // roda — o que é o comportamento certo, já que aí o Background Fetch está
+      // fazendo seu trabalho de verdade em segundo plano). Ele só entra em ação
+      // se a pessoa voltar pra aba e o envio realmente não tiver progredido.
+      const watchdog = setInterval(() => {
+        if (settled) return;
+        if (document.visibilityState !== "visible") return;
+        if (Date.now() - lastProgressAt < BG_FETCH_STALL_TIMEOUT_MS) return;
+
+        settled = true;
+        cleanup();
+        console.warn("[Uploader] Background Fetch sem progresso há muito tempo, acionando fallback.");
+        try { bgFetch.abort(); } catch (e) {}
+        reject(new Error("Background Fetch travado — sem progresso."));
+      }, 10000);
+
       bc.onmessage = (event) => {
         const data = event.data;
-        if (data.id !== bgFetchId) return;
-
+        if (data.id !== bgFetchId || settled) return;
+        settled = true;
         cleanup();
+
         if (data.type === "BG_FETCH_COMPLETE") {
           onProgress({
             phase: "done",
@@ -201,12 +229,12 @@ async function uploadViaBackgroundFetch(files, guestName, { onProgress, onSucces
           if (onSuccess) onSuccess({ successCount: totalFiles, total: totalFiles });
           resolve();
         } else if (data.type === "BG_FETCH_FAILED" || data.type === "BG_FETCH_ABORTED") {
-          if (onError) onError(new Error("Erro no envio em segundo plano."));
-          resolve();
+          reject(new Error("Erro no envio em segundo plano."));
         }
       };
 
       if (bgFetch.result === "success") {
+        settled = true;
         cleanup();
         onProgress({
           phase: "done",
@@ -566,8 +594,14 @@ export async function checkPendingBackgroundUpload() {
     }
 
     if (bgFetch.result === "") {
+      // Se a aba foi encerrada de verdade (não só em segundo plano — ex: o
+      // Android matou o processo por falta de memória) enquanto o envio
+      // travava, o vigia daquela sessão morreu junto. Essa checagem, disparada
+      // toda vez que a pessoa volta pro site, é a segunda linha de defesa.
+      const stalled = data.startedAt && Date.now() - data.startedAt > BG_FETCH_STALL_TIMEOUT_MS * 4;
       return {
         completed: false,
+        stalled,
         bgFetch,
         totalFiles: data.totalFiles,
         id: data.id,
